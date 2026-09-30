@@ -1,8 +1,8 @@
-# Kucharzyna v3.0 — GitHub Pages ROOT
+# Kucharzyna v3.1 — GitHub Pages ROOT
 
 PWA Kucharzyna przygotowana do publikacji jako statyczna strona na GitHub Pages.
 
-## v3.0 — UX / nawigacja / gotowanie / zdjęcia
+## v3.1 — UX / nawigacja / gotowanie / zdjęcia
 - Stały przycisk `←` w lewym górnym rogu na każdym ekranie.
 - Inteligentny powrót: gotowanie → receptura → poprzedni ekran.
 - Stały przycisk `⚙ Ustawienia` w górnym pasku, również w trybie Amator.
@@ -15,7 +15,7 @@ PWA Kucharzyna przygotowana do publikacji jako statyczna strona na GitHub Pages.
 - Zdjęcia mają odporny fallback zamiast pustego miejsca; obrazy zewnętrzne są dodatkowo cache'owane przez Service Workera, gdy przeglądarka je pobierze.
 - Brak podkatalogów — wszystkie pliki pozostają w katalogu głównym GitHub Pages.
 - Brak Google Search / przekierowania do Google.
-- Service Worker podbity do wersji v3.0.
+- Service Worker podbity do wersji v3.1.
 
 ## Pliki
 - `index.html`
@@ -39,7 +39,7 @@ PWA Kucharzyna przygotowana do publikacji jako statyczna strona na GitHub Pages.
 Po publikacji nowej wersji Service Worker ma nowy numer cache. Jeśli iPhone pokazuje starą wersję, zamknij PWA, otwórz stronę ponownie i zaakceptuj komunikat o nowej wersji.
 
 
-## v3.0
+## v3.1
 - Stały przycisk Powrót jest niezależny od renderowanego ekranu.
 - Usunięto zewnętrzne źródła zdjęć; grafiki receptur są lokalnymi plikami PWA.
 - Zdjęcia działają offline po instalacji bez API Openverse.

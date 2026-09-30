@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto.randomUUID?crypto.randomUUID():"id-"+Date.now()+"-"+Math.random().toString(16).slice(2);
 const now=()=>new Date().toISOString();
-let state={route:"start",recipes:[],categories:[],shopping:[],settings:{theme:"dark",profile:"pro"},history:[],cook:{},selectedCat:"Wszystkie",query:"",sort:"recent"};
+let state={route:"start",recipes:[],categories:[],shopping:[],settings:{theme:"dark",profile:"pro"},history:[],cook:{},pizzaProfiles:[],activePizzaProfileId:null,selectedCat:"Wszystkie",query:"",sort:"recent",googleQuery:""};
 const baseCats=["Pizza","Pasta","Sosy","Mięso","Ryby","Owoce morza","Warzywa","Desery","Pieczywo","Zupy","Sałatki","Cocktaile","Prep","Sosy bazowe","Inne"];
 
 const seed=[
@@ -98,7 +98,7 @@ function normalizeRecipes(){
 }
 
 async function init(){
- state.recipes=await getAll("recipes"); state.categories=await getAll("categories"); state.shopping=await getAll("shoppingItems"); state.history=await getAll("history");
+ state.recipes=await getAll("recipes"); state.categories=await getAll("categories"); state.shopping=await getAll("shoppingItems"); state.history=await getAll("history"); state.pizzaProfiles=await getAll("pizzaProfiles");
  const sets=await getAll("settings"); state.settings=sets[0]||state.settings;
  state.cook=Object.fromEntries((await getAll("cookState")).map(x=>[x.id,x]));
  if(!state.categories.length){for(const name of baseCats)await put("categories",{id:uid(),name});state.categories=await getAll("categories")}
@@ -106,7 +106,8 @@ async function init(){
  applyTheme(); setupSW();
 }
 function makeRecipe(x){const r={id:uid(),createdAt:now(),updatedAt:now(),favorite:false,lastUsedAt:null,sections:[{id:uid(),name:"Główna",ingredients:x.ingredients.map(a=>({id:uid(),name:a[0],qty:a[1],unit:a[2],percent:a[3]??"",price:"",packQty:"",packUnit:a[2]}))}],steps:x.steps.map((text,i)=>({id:uid(),text})),...x};delete r.ingredients;return r}
-function applyTheme(){document.body.classList.toggle("amateur",state.settings.profile==="amateur");document.body.dataset.profile=state.settings.profile;let t=state.settings.theme;if(t==="system")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.classList.toggle("dark",t==="dark")}
+function resolvedTheme(){const t=state.settings.theme;return t==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):t}
+function applyTheme(){const root=document.documentElement;const t=resolvedTheme();root.classList.toggle("dark",t==="dark");root.classList.toggle("light",t==="light");root.dataset.theme=t;root.dataset.themePreference=state.settings.theme;document.body.classList.toggle("amateur",state.settings.profile==="amateur");document.body.dataset.profile=state.settings.profile;document.querySelector("#themeBtn")?.setAttribute("aria-label",`Motyw: ${state.settings.theme}`)}
 function setupSW(){if(!("serviceWorker" in navigator))return;navigator.serviceWorker.register("./service-worker.js").then(reg=>{reg.addEventListener("updatefound",()=>{const w=reg.installing;if(w)w.addEventListener("statechange",()=>{if(w.state==="installed"&&navigator.serviceWorker.controller)toast("Nowa wersja Kucharzyny jest dostępna — Odśwież",true)})})}).catch(()=>{})}
 function toast(msg,action=false){const t=$("#toast");t.textContent=action?msg+"  → Odśwież":msg;t.classList.add("show");if(action)t.onclick=()=>location.reload();setTimeout(()=>t.classList.remove("show"),3500)}
 function nav(route){state.route=route;render();$(".main-scroll").scrollTop=0}
@@ -570,6 +571,8 @@ const _bindV14=bindV14;
 bindV14=function(){
   _bindV14();
   $$('#main [data-route2]').forEach(b=>b.onclick=()=>nav(b.dataset.route2));
+  $$('#main [data-google]').forEach(b=>b.onclick=()=>nav('google'));
+  $$('#main [data-google-suggest]').forEach(b=>b.onclick=()=>{state.googleQuery=b.dataset.googleSuggest||'';renderV20();requestAnimationFrame(()=>$('#googleRecipeSearch')?.focus())});
   $$('#main [data-cat-am]').forEach(b=>b.onclick=()=>{state.route='recipes';state.selectedCat=b.dataset.catAm;renderV14();});
 };
 
@@ -644,17 +647,44 @@ function viewShoppingV20(){const groups={};for(const x of state.shopping){const 
 function cookStateFor(r){return state.cook[r.id]||{id:r.id,ingredients:{},steps:{},activeStep:0,startedAt:null,completed:false}}
 function viewCookV20(){const r=state.recipes.find(x=>x.id===state.selectedId);if(!r)return viewRecipes();const st=cookStateFor(r),steps=r.steps||[],ingredients=ingredientGroups(r),doneSteps=steps.filter(s=>st.steps[s.id]).length,pct=steps.length?Math.round(doneSteps/steps.length*100):0;if(st.completed)return `<div class="cook20"><div class="cook20-top"><button class="btn ghost" data-back="recipe">← Receptura</button><span class="cook20-percent">100%</span></div>${photoMarkup(r,'global-photo')}<div class="cook20-complete"><div class="big-check">✓</div><div class="kicker">GOTOWANIE ZAKOŃCZONE</div><h2>${escapeHtml(r.name)}</h2><p>Wszystkie kroki tej receptury zostały oznaczone jako wykonane. Możesz wrócić do receptury albo zresetować postęp i ugotować ją ponownie.</p><div class="row" style="justify-content:center"><button class="btn primary" id="cook-back-recipe">← Wróć do receptury</button><button class="btn" id="cook-reset-v20">Gotuj ponownie</button></div></div></div>`;const active=Math.min(Math.max(+st.activeStep||0,0),Math.max(steps.length-1,0)),step=steps[active];return `<div class="cook20"><div class="cook20-top"><button class="btn ghost" data-back="recipe">← Receptura</button><span class="cook20-percent">${pct}%</span></div><div class="cook20-title"><div class="kicker">GOTUJĘ TERAZ</div><h1>${escapeHtml(r.name)}</h1></div><div class="cook20-progress"><span style="width:${pct}%"></span></div><section class="cook20-focus"><div class="kicker">KROK ${steps.length?active+1:0} / ${steps.length}</div><h2>${step?escapeHtml(step.text):'Brak kroków w tej recepturze.'}</h2><div class="cook20-controls"><button class="btn" id="cook-prev" ${active<=0?'disabled':''}>← Poprzedni</button><button class="btn primary" id="cook-done">${step&&st.steps[step.id]?'✓ Cofnij ukończenie':'✓ Ukończ krok'}</button><button class="btn" id="cook-next" ${active>=steps.length-1?'disabled':''}>Następny →</button></div></section><section class="cook20-ingredients"><div class="section-title-row"><h2>Składniki</h2><span class="kicker">${ingredients.length}</span></div>${ingredients.map(i=>`<label class="cook20-ing ${st.ingredients[i.id]?'done':''}"><input type="checkbox" data-cook-ing-v20="${i.id}" ${st.ingredients[i.id]?'checked':''}><span>${escapeHtml(i.name)}</span><strong>${fmt(i.qty)} ${escapeHtml(i.unit)}</strong></label>`).join('')}</section><section class="cook20-steps"><h2>Postęp</h2>${steps.map((s,i)=>`<button class="cook20-step-row ${st.steps[s.id]?'done':''} ${i===active?'active':''}" data-cook-step-v20="${s.id}" data-step-index="${i}"><span>${i+1}</span><div>${escapeHtml(s.text)}</div>${st.steps[s.id]?'✓':''}</button>`).join('')}</section><button class="btn danger" id="cook-reset-v20">Resetuj postęp</button></div>`}
 
+function viewTraditionalV14(){
+ const cuisines=[
+  ['Włochy','Klasyka makaronu, pizzy i risotto','🇮🇹','./photo-carbonara.jpg'],
+  ['Polska','Domowe smaki i tradycyjne dania','🇵🇱','./photo-tomato.jpg'],
+  ['Azjatycka','Wok, makarony i intensywne aromaty','🌏','./photo-carbonara.jpg'],
+  ['Meksykańska','Tacos, salsa i kuchnia uliczna','🇲🇽','./photo-pizza.jpg'],
+  ['Francuska','Technika, sosy i klasyka','🇫🇷','./photo-tomato.jpg'],
+  ['Hiszpańska','Tapas, ryż i wyraziste smaki','🇪🇸','./photo-pizza.jpg'],
+  ['Bliski Wschód','Przyprawy, grill i mezze','🌙','./photo-tomato.jpg'],
+  ['Amerykańska','Comfort food i kuchnia nowoczesna','🇺🇸','./photo-pizza.jpg']
+ ];
+ const q=String(state.traditionalQueryV14||'').toLowerCase();
+ const shown=cuisines.filter(c=>!q||(c[0]+' '+c[1]).toLowerCase().includes(q));
+ const selected=state.tradCatV14&&state.tradCatV14!=="Wszystkie"?state.recipes.filter(r=>r.traditional&&((r.cuisine||'').toLowerCase()===String(state.tradCatV14).toLowerCase()||(r.cuisine||'').toLowerCase().includes(String(state.tradCatV14).toLowerCase().replace('azjatycka','azja')))):[];
+ return `<div class="v3-world"><div class="v3-page-head"><div><span class="v3-kicker">INSPIRACJE</span><h1>Kuchnie świata</h1><p>Odkrywaj klasyczne kierunki kulinarne i przechodź prosto do pasujących receptur.</p></div></div><div class="v3-search v3-world-search"><span>⌕</span><input id="traditionalSearchV14" placeholder="Szukaj kuchni lub regionu…" value="${escapeHtml(state.traditionalQueryV14||'')}"></div><div class="v3-world-grid">${shown.map(c=>`<button class="v3-world-card" data-world-cuisine="${escapeHtml(c[0])}"><img src="${c[3]}" alt="${escapeHtml(c[0])}" onerror="this.src='./photo-generic.jpg'"><div class="v3-world-copy"><b>${c[2]} ${escapeHtml(c[0])}</b><span>${escapeHtml(c[1])}</span></div></button>`).join('')}</div>${selected.length?`<section class="v3-world-results"><div class="v3-section-head"><div><span class="v3-kicker">${escapeHtml(state.tradCatV14)}</span><h2>Receptury</h2></div><button class="v3-link" data-world-clear>Wszystkie</button></div><div class="v3-recipe-list">${selected.map(r=>v3RecipeCard(r,true)).join('')}</div></section>`:`<section class="v3-world-feature"><span>🍽️</span><div><b>Masz ochotę na konkretną kuchnię?</b><p>Wybierz kraj lub region powyżej. Kucharzyna pokaże zapisane klasyczne receptury z tego kierunku.</p></div></section>`}</div>`;
+}
+
 function viewCalculatorsV20(){
  const p=state.pizzaV20||{mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};
  const f0=+p.flour||0,h=+p.hyd||0,s=+p.salt||0,o=+p.oil||0,y=+p.yeast||0;let f=f0;if(p.mode==='dough'){const total=(+p.balls||0)*(+p.ball||0);f=total/(1+h/100+s/100+o/100+y/100)}const water=f*h/100,salt=f*s/100,oil=f*o/100,yeast=f*y/100,total=f+water+salt+oil+yeast,balls=p.mode==='dough'?(+p.balls||0):(+p.ball>0?Math.floor(total/+p.ball):0);
  return `<div class="pro-calc"><div class="screen-back"><button class="btn ghost" data-back="start">‹ Powrót</button></div><div class="kicker">PRO KALKULATOR</div><h1>🍕 Pizza Lab</h1><p class="muted">Pełna receptura ciasta, parametry procesu i preferment.</p><div class="segmented"><button class="seg ${p.mode==='dough'?'active':''}" id="p2-dough">Kulki / masa</button><button class="seg ${p.mode==='flour'?'active':''}" id="p2-flour">Mam mąkę</button></div><section class="calc-card"><div class="calc-input-grid">${p.mode==='flour'?`<label>Mąka <input id="p2-flour-val" type="number" inputmode="decimal" value="${p.flour}"> g</label><label>Masa kulki <input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"> g</label>`:`<label>Liczba kulek <input id="p2-balls" type="number" inputmode="decimal" value="${p.balls}"></label><label>Masa kulki <input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"> g</label>`}<label>Hydracja <input id="p2-hyd" type="number" step="0.1" value="${p.hyd}"> %</label><label>Sól <input id="p2-salt" type="number" step="0.1" value="${p.salt}"> %</label><label>Oliwa <input id="p2-oil" type="number" step="0.1" value="${p.oil}"> %</label><label>Drożdże <input id="p2-yeast" type="number" step="0.01" value="${p.yeast}"> %</label><label>Temperatura <input id="p2-temp" type="number" value="${p.temp}"> °C</label><label>Fermentacja <input id="p2-time" type="number" value="${p.time}"> h</label></div></section><section id="p2-live-result" class="calc-result pro-result"><div><span>Mąka</span><b>${fmt(f)} g</b></div><div><span>Woda</span><b>${fmt(water)} g</b></div><div><span>Sól</span><b>${fmt(salt)} g</b></div><div><span>Oliwa</span><b>${fmt(oil)} g</b></div><div><span>Drożdże</span><b>${fmt(yeast)} g</b></div><div><span>Ciasto</span><b>${fmt(total)} g</b></div><div><span>Kulki</span><b>${fmt(balls)} × ${fmt(p.ball)} g${p.mode==='flour'?' · wyliczone':''}</b></div></section><section class="calc-card"><div class="section-title-row"><div><h2>Fermentacja PRO</h2><p class="muted">Profil procesu — możesz zapisać go jako recepturę.</p></div></div><div class="calc-input-grid"><label>Preferment <input id="p2-pref" type="number" step="1" value="${p.poolish}"> % mąki</label><label>Nawodnienie prefermentu <input id="p2-prefhyd" type="number" value="${p.prefermentHyd}"> %</label></div><div class="ferment-box"><b>${p.poolish>0?`Preferment: ${fmt(f*p.poolish/100)} g mąki · ${fmt(f*p.poolish/100*p.prefermentHyd/100)} g wody`:'Brak prefermentu'}</b><span>${fmt(p.time)} h · ${fmt(p.temp)}°C</span></div></section><div class="row"><button class="btn primary" id="p2-save">Zapisz profil</button><button class="btn" id="p2-reset">Reset</button></div></div>`;
 }
 
+function updateTopbar(){
+ const titleMap={start:'Start',recipes:'Przepisy',traditional:'Kuchnie świata',calculators:'Kalkulatory',shopping:'Zakupy',settings:'Ustawienia',cook:'Gotuję',edit:'Edytuj recepturę',google:'Szukaj w Google',recipe:(state.recipes.find(r=>r.id===state.selectedId)?.name||'Receptura')};
+ const el=$("#topbarTitle"); if(el) el.textContent=titleMap[state.route]||'Kucharzyna';
+ const gb=$("#globalBack"); if(gb) gb.style.visibility=state.route==='start'?'hidden':'visible';
+}
+function openGoogleRecipeSearch(){const q=String(state.googleQuery||'').trim();if(!q){toast('Wpisz nazwę dania lub składnik');return}const url='https://www.google.com/search?q='+encodeURIComponent(q+' przepis')+'&hl=pl';window.open(url,'_blank','noopener,noreferrer');}
+function viewGoogleSearch(){return `<div class="v3-google-screen"><div class="v3-page-head"><div><span class="v3-kicker">INTERNET</span><h1>Szukaj w Google</h1><p>Znajdź przepisy, inspiracje, zdjęcia i materiały kulinarne. Wyniki otwierają się w Google.</p></div></div><div class="v3-google-searchbox"><span>G</span><input id="googleRecipeSearchInput" autocomplete="off" placeholder="np. carbonara bez śmietany…" value="${escapeHtml(state.googleQuery||'')}"><button id="googleRecipeGo" aria-label="Szukaj">⌕</button></div><div class="v3-google-suggestions"><button data-google-suggest="carbonara przepis">Carbonara</button><button data-google-suggest="pizza napoletana przepis">Pizza Napoletana</button><button data-google-suggest="sos pomidorowy przepis">Sos pomidorowy</button><button data-google-suggest="ciasto na pizzę 65% hydracji">Ciasto na pizzę</button></div><section class="v3-google-info"><b>Jak to działa?</b><p>Kucharzyna nie kopiuje automatycznie cudzych receptur. Google służy tutaj jako wyszukiwarka źródeł i inspiracji — wybraną recepturę możesz później świadomie opracować i zapisać u siebie.</p></section><button class="v3-primary-action v3-google-big" id="googleRecipeGo2">⌕ Szukaj przepisu w Google</button></div>`}
 function bindV20(){
   const gb=$('#globalBack');if(gb){gb.onclick=()=>backRoute();gb.setAttribute('aria-label',state.route==='start'?'Start':'Powrót');gb.title=state.route==='start'?'Start':'Powrót';}
   const gs=$('#globalSettings');if(gs)gs.onclick=()=>nav('settings');
+  const tb=$('#themeBtn');if(tb)tb.onclick=()=>{const order=['system','light','dark'];const i=order.indexOf(state.settings.theme);state.settings.theme=order[(i+1)%order.length];saveSetting();applyTheme();renderV20();toast(`Motyw: ${state.settings.theme==='system'?'Automatyczny':state.settings.theme==='light'?'Jasny':'Ciemny'}`)};
   $$('.nav-btn').forEach(b=>b.onclick=()=>nav(b.dataset.route));
   $$('#main [data-route2]').forEach(b=>b.onclick=()=>nav(b.dataset.route2));
+  $$('#main [data-google]').forEach(b=>b.onclick=()=>nav('google'));
+  $$('#main [data-google-suggest]').forEach(b=>b.onclick=()=>{state.googleQuery=b.dataset.googleSuggest||'';renderV20();requestAnimationFrame(()=>$('#googleRecipeSearch')?.focus())});
   $$('#main [data-action]').forEach(b=>b.onclick=()=>{
     const a=b.dataset.action;
     if(a==='new'){state.editId=null;state.route='edit';renderV20()}
@@ -674,6 +704,11 @@ function bindV20(){
   const search=$('#recipeSearch'); if(search){search.oninput=()=>{state.query=search.value;clearTimeout(window.__k3SearchTimer);window.__k3SearchTimer=setTimeout(()=>renderV20(),80)}}
   const sort=$('#sort'); if(sort){sort.onchange=()=>{state.sort=sort.value;renderV20()}}
   $$('#main [data-trad-v14]').forEach(b=>b.onclick=()=>{state.tradCatV14=b.dataset.tradV14;renderV20()});
+  const ws=$('#traditionalSearchV14');if(ws){ws.oninput=()=>{state.traditionalQueryV14=ws.value;clearTimeout(window.__k3WorldTimer);window.__k3WorldTimer=setTimeout(()=>renderV20(),80)}}
+  $$('#main [data-world-cuisine]').forEach(b=>b.onclick=()=>{const c=b.dataset.worldCuisine;state.query='';state.selectedCat='Wszystkie';state.tradCatV14=c;renderV20();});
+  $('#main [data-world-clear]')?.addEventListener('click',()=>{state.tradCatV14='Wszystkie';renderV20()});
+  if(state.route==='google'){const g=$('#googleRecipeSearchInput');if(g){g.oninput=()=>state.googleQuery=g.value;g.onkeydown=e=>{if(e.key==='Enter')k3GoogleRecipeSearch()};}$('#googleRecipeGo')?.addEventListener('click',openGoogleRecipeSearch);$('#googleRecipeGo2')?.addEventListener('click',openGoogleRecipeSearch)}
+
   if(state.route==='settings'){
     const theme=$('#theme'); if(theme){theme.value=state.settings.theme;theme.onchange=()=>{state.settings.theme=theme.value;saveSetting();applyTheme();toast('Motyw zapisany')}}
     const profile=$('#profile'); if(profile){profile.value=state.settings.profile;profile.onchange=()=>{state.settings.profile=profile.value;saveSetting();applyTheme();renderV20();toast(profile.value==='amateur'?'Tryb Amator włączony':'Tryb Profesjonalny włączony')}}
@@ -707,7 +742,9 @@ function bindV20(){
     $('#p2-dough')?.addEventListener('click',()=>{state.pizzaV20={...(state.pizzaV20||{}),mode:'dough'};renderV20()});
     $('#p2-flour')?.addEventListener('click',()=>{state.pizzaV20={...(state.pizzaV20||{}),mode:'flour'};renderV20()});
     $('#p2-reset')?.addEventListener('click',()=>{state.pizzaV20={mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};renderV20()});
-    $('#p2-save')?.addEventListener('click',async()=>{const p=state.pizzaV20||{};await put('pizzaProfiles',{id:uid(),name:`Pizza PRO ${p.hyd||65}% / ${p.time||24}h`,mode:p.mode,values:p});toast('Profil pizzy zapisany')});
+    $('#p2-save')?.addEventListener('click',async()=>{const p=state.pizzaV20||{};openModal(`<h2>Zapisz profil pizzy</h2><input id="pizza-profile-name" value="Pizza PRO ${p.hyd||65}% / ${p.time||24}h" placeholder="Nazwa profilu"><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Anuluj</button><button class="btn primary" id="pizza-profile-ok">Zapisz</button></div>`);$('#pizza-profile-ok').onclick=async()=>{const name=$('#pizza-profile-name').value.trim()||`Pizza PRO ${p.hyd||65}% / ${p.time||24}h`;const id=uid();await put('pizzaProfiles',{id,name,mode:p.mode,values:{...p}});state.pizzaProfiles=await getAll('pizzaProfiles');state.activePizzaProfileId=id;closeModal();renderV20();toast('Profil zapisany ✓')}});
+  $$('#main [data-pizza-profile]').forEach(b=>b.onclick=async()=>{const pr=state.pizzaProfiles.find(x=>x.id===b.dataset.pizzaProfile);if(!pr)return;state.pizzaV20={...state.pizzaV20,...(pr.values||{}),mode:pr.mode||pr.values?.mode||'dough'};state.activePizzaProfileId=pr.id;renderV20();toast(`Wczytano: ${pr.name}`)});
+  $('#p2-profile-new')?.addEventListener('click',()=>{state.activePizzaProfileId=null;state.pizzaV20={mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};renderV20()});
   }
 }
 function updatePizzaProResult(){
@@ -717,8 +754,8 @@ function updatePizzaProResult(){
   const out=$('#p2-live-result');if(out)out.innerHTML=`<div><span>Mąka</span><b>${fmt(f)} g</b></div><div><span>Woda</span><b>${fmt(water)} g</b></div><div><span>Sól</span><b>${fmt(salt)} g</b></div><div><span>Oliwa</span><b>${fmt(oil)} g</b></div><div><span>Drożdże</span><b>${fmt(yeast)} g</b></div><div><span>Ciasto</span><b>${fmt(total)} g</b></div><div><span>Kulki</span><b>${fmt(balls)} × ${fmt(p.ball||0)} g${p.mode==='flour'?' · wyliczone':''}</b></div>`;
 }
 
-function renderV20(){applyTheme();$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.route===state.route));if(state.route==='recipe')$('#main').innerHTML=recipeViewV20(state.selectedId);else if(state.route==='cook')$('#main').innerHTML=viewCookV20();else if(state.route==='shopping')$('#main').innerHTML=viewShoppingV20();else if(state.route==='calculators')$('#main').innerHTML=viewCalculatorsV20();else if(state.route==='edit')$('#main').innerHTML=editorV14(state.editId);else {const views={start:viewStart,recipes:viewRecipes,traditional:viewTraditionalV14,settings:viewSettings};$('#main').innerHTML=(views[state.route]||viewStart)()}bindV20()}
-function backRoute(){const r=state.route;let target='start';if(r==='cook')target='recipe';else if(r==='edit'){target=state.editId?'recipe':'start';if(state.editId)state.selectedId=state.editId;}else if(r==='recipe')target=state.returnRoute||'recipes';else if(r==='recipes'||r==='traditional'||r==='calculators'||r==='shopping'||r==='settings')target='start';state.route=target;applyTheme();renderV20();requestAnimationFrame(()=>document.querySelector('.main-scroll')?.scrollTo({top:0,left:0,behavior:'auto'}))}
+function renderV20(){applyTheme();updateTopbar();$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.route===state.route));if(state.route==='recipe')$('#main').innerHTML=recipeViewV20(state.selectedId);else if(state.route==='google')$('#main').innerHTML=viewGoogleSearch();else if(state.route==='cook')$('#main').innerHTML=viewCookV20();else if(state.route==='shopping')$('#main').innerHTML=viewShoppingV20();else if(state.route==='calculators')$('#main').innerHTML=viewCalculatorsV20();else if(state.route==='edit')$('#main').innerHTML=editorV14(state.editId);else {const views={start:viewStart,recipes:viewRecipes,traditional:viewTraditionalV14,settings:viewSettings};$('#main').innerHTML=(views[state.route]||viewStart)()}bindV20()}
+function backRoute(){const r=state.route;let target='start';if(r==='cook')target='recipe';else if(r==='edit'){target=state.editId?'recipe':'start';if(state.editId)state.selectedId=state.editId;}else if(r==='recipe')target=state.returnRoute||'recipes';else if(r==='google')target='recipes';else if(r==='recipes'||r==='traditional'||r==='calculators'||r==='shopping'||r==='settings')target='start';state.route=target;applyTheme();renderV20();requestAnimationFrame(()=>document.querySelector('.main-scroll')?.scrollTo({top:0,left:0,behavior:'auto'}))}
 function recipeViewV20(id){const r=state.recipes.find(x=>x.id===id);if(!r)return viewRecipes();const ingredients=ingredientGroups(r),desc=recipeDescription(r);return `<div class="recipe20">${photoMarkup(r,'global-photo')}<div class="recipe20-title"><div class="kicker">${escapeHtml(r.category||'Inne')} ${r.flag||''} ${r.traditional?'<span class="star">★ TRADYCYJNA</span>':''}</div><h1>${escapeHtml(r.name)}</h1><p>${escapeHtml(desc)}</p></div><div class="recipe20-intro"><b>Na co zwrócić uwagę</b><div>${escapeHtml(r.notes||'Zanim zaczniesz, przygotuj wszystkie składniki, sprawdź temperaturę i zaplanuj kolejność pracy. Własne uwagi możesz później zapisać przy tej recepturze.')}</div></div><div class="recipe20-actions"><button class="btn primary" data-cook="${r.id}">▶ GOTUJĘ</button><button class="btn" data-edit="${r.id}">✎ EDYTUJ</button><button class="btn" data-shop-recipe="${r.id}">＋ ZAKUPY</button></div><section><div class="section-title-row"><h2>Składniki</h2><span class="kicker">${ingredients.length}</span></div>${(r.sections||[]).map(s=>`<div class="ingredient-section"><h3>${escapeHtml(s.name)}</h3>${(s.ingredients||[]).map(i=>`<button class="ingredient20" data-recipe-ing="${i.id}"><span>${escapeHtml(i.name)}</span><strong>${fmt(i.qty)} ${escapeHtml(i.unit)}</strong></button>`).join('')}</div>`).join('')}</section><section><div class="section-title-row"><h2>Wykonanie</h2><span class="kicker">${(r.steps||[]).length} kroków</span></div><div class="steps20">${(r.steps||[]).map((s,i)=>`<article class="step20"><div>${i+1}</div><p>${escapeHtml(s.text)}</p></article>`).join('')}</div></section><section class="recipe20-meta"><div><span>Przygotowanie</span><b>${fmt(r.prep||0)} min</b></div><div><span>Gotowanie</span><b>${fmt(r.cook||0)} min</b></div><div><span>Fermentacja</span><b>${fmt(r.ferment||0)} h</b></div>${r.temp?`<div><span>Temperatura</span><b>${r.temp}°C</b></div>`:''}</section>${r.imageCredit?`<p class="photo-credit">${escapeHtml(r.imageCredit)}</p>`:''}</div>`}
 
 function initKucharzyna20(){nav=function(route){if(route===state.route && route==='start'){document.querySelector('.main-scroll')?.scrollTo(0,0);return}state.route=route;applyTheme();renderV20();requestAnimationFrame(()=>document.querySelector('.main-scroll')?.scrollTo({top:0,left:0,behavior:'auto'}))};window.renderV20=renderV20}
@@ -730,6 +767,7 @@ initKucharzyna20();
    Visual layer only: existing data/actions remain compatible.
    ============================================================ */
 function v3Icon(icon, label){return `<span class="v3-icon" aria-hidden="true">${icon}</span><span>${label}</span>`}
+function v3SvgIcon(name){const paths={book:'<path d="M5 5.5A3.5 3.5 0 0 1 8.5 2H20v17H8.5A3.5 3.5 0 0 0 5 22z"/><path d="M5 5.5V22"/><path d="M8.5 19H20"/>',globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.5 3.5 5.5 3.5 9S14.4 18.5 12 21M12 3C9.6 5.5 8.5 8.5 8.5 12S9.6 18.5 12 21"/>',cart:'<circle cx="9" cy="20" r="1.5"/><circle cx="19" cy="20" r="1.5"/><path d="M3 4h2l2.2 11.5h11.3L21 8H6"/>',calc:'<rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8 6h8M8 10h2M14 10h2M8 14h2M14 14h2M8 18h2M14 18h2"/>',heart:'<path d="M20.8 8.8c0 5.4-8.8 10.2-8.8 10.2S3.2 14.2 3.2 8.8A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 8.8 2.8Z"/>',gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.8 1.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.7v.2h-2.6v-.2a1.8 1.8 0 0 0-1.1-1.7 1.8 1.8 0 0 0-2 .4l-.1.1-1.8-1.8.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.7-1.1H6v-2.6h.2a1.8 1.8 0 0 0 1.7-1.1 1.8 1.8 0 0 0-.4-2l-.1-.1 1.8-1.8.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 12.4 5v-.2H15V5a1.8 1.8 0 0 0 1.1 1.7 1.8 1.8 0 0 0 2-.4l.1-.1L20 8l-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.7 1.1h.2v2.6h-.2a1.8 1.8 0 0 0-1.8 1.2Z"/>'};return `<span class="v3-svg-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name]||paths.book}</svg></span>`}
 function v3RecipeCard(r,wide=false){
   const src=recipeImage(r); const total=(+r.prep||0)+(+r.cook||0);
   return `<article class="v3-recipe-card ${wide?'v3-wide':''}" data-open="${r.id}">
@@ -749,12 +787,12 @@ function viewStart(){
       </div>
     </section>
     <section class="v3-menu-grid">
-      <button class="v3-menu-card v3-menu-recipes" data-action="recipes"><span class="v3-menu-icon">🍝</span><b>Przepisy</b><small>Twoja książka kucharska</small></button>
-      <button class="v3-menu-card v3-menu-world" data-route2="traditional"><span class="v3-menu-icon">🌍</span><b>Kuchnie świata</b><small>Tradycyjne smaki</small></button>
-      <button class="v3-menu-card v3-menu-shop" data-action="shopping"><span class="v3-menu-icon">🛒</span><b>Zakupy</b><small>Lista i planowanie</small></button>
-      <button class="v3-menu-card v3-menu-calc" data-action="calculators"><span class="v3-menu-icon">🧮</span><b>Kalkulatory</b><small>Pizza, ciasto i więcej</small></button>
-      <button class="v3-menu-card v3-menu-fav" data-action="fav"><span class="v3-menu-icon">♥</span><b>Ulubione</b><small>Twoje najlepsze</small></button>
-      <button class="v3-menu-card v3-menu-settings" data-action="settings"><span class="v3-menu-icon">⚙</span><b>Ustawienia</b><small>Motyw, profil, backup</small></button>
+      <button class="v3-menu-card v3-menu-recipes" data-action="recipes"><span class="v3-menu-icon">${v3SvgIcon('book')}</span><b>Przepisy</b><small>Twoja książka kucharska</small></button>
+      <button class="v3-menu-card v3-menu-world" data-route2="traditional"><span class="v3-menu-icon">${v3SvgIcon('globe')}</span><b>Kuchnie świata</b><small>Tradycyjne smaki</small></button>
+      <button class="v3-menu-card v3-menu-shop" data-action="shopping"><span class="v3-menu-icon">${v3SvgIcon('cart')}</span><b>Zakupy</b><small>Lista i planowanie</small></button>
+      <button class="v3-menu-card v3-menu-calc" data-action="calculators"><span class="v3-menu-icon">${v3SvgIcon('calc')}</span><b>Kalkulatory</b><small>Pizza, ciasto i więcej</small></button>
+      <button class="v3-menu-card v3-menu-fav" data-action="fav"><span class="v3-menu-icon">${v3SvgIcon('heart')}</span><b>Ulubione</b><small>Twoje najlepsze</small></button>
+      <button class="v3-menu-card v3-menu-settings" data-action="settings"><span class="v3-menu-icon">${v3SvgIcon('gear')}</span><b>Ustawienia</b><small>Motyw, profil, backup</small></button><button class="v3-menu-card v3-menu-google" data-google="1"><span class="v3-menu-icon">G</span><b>Szukaj w Google</b><small>Przepisy z internetu</small></button>
     </section>
     ${recent.length?`<section class="v3-section"><div class="v3-section-head"><div><span class="v3-kicker">WRACAJ DO GOTOWANIA</span><h2>Ostatnio używane</h2></div><button class="v3-link" data-route2="recipes">Wszystkie →</button></div><div class="v3-horizontal">${recent.map(r=>v3RecipeCard(r)).join('')}</div></section>`:''}
     ${fav.length?`<section class="v3-section"><div class="v3-section-head"><div><span class="v3-kicker">TWOJE PEWNIAKI</span><h2>Ulubione</h2></div></div><div class="v3-horizontal">${fav.map(r=>v3RecipeCard(r)).join('')}</div></section>`:''}
@@ -767,7 +805,7 @@ function viewRecipes(){
   if(state.sort==='name')rs.sort((a,b)=>a.name.localeCompare(b.name)); else if(state.sort==='fav')rs.sort((a,b)=>Number(b.favorite)-Number(a.favorite)); else rs.sort((a,b)=>(b.lastUsedAt||b.updatedAt||'').localeCompare(a.lastUsedAt||a.updatedAt||''));
   return `<div class="v3-library"><div class="v3-page-head"><div><span class="v3-kicker">TWOJA BAZA</span><h1>Przepisy</h1><p>Wszystko, co chcesz ugotować, zapisane w jednym miejscu.</p></div><button class="v3-add-btn" data-action="new">＋<span>Nowa</span></button></div>
     <div class="v3-search"><span>⌕</span><input id="recipeSearch" placeholder="Szukaj przepisu, składnika…" value="${escapeHtml(state.query)}"></div>
-    <div class="v3-chips"><button class="v3-chip ${state.selectedCat==='Wszystkie'?'active':''}" data-cat="Wszystkie">Wszystkie</button>${state.categories.map(c=>`<button class="v3-chip ${state.selectedCat===c.name?'active':''}" data-cat="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`).join('')}</div>
+    <div class="v3-chips"><button class="v3-chip ${state.selectedCat==='Wszystkie'?'active':''}" data-cat="Wszystkie">Wszystkie</button>${state.categories.map(c=>`<button class="v3-chip ${state.selectedCat===c.name?'active':''}" data-cat="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`).join('')}</div><button class="v3-google-entry" data-google="1"><span>G</span><div><b>Znajdź przepis w Google</b><small>Internetowe inspiracje i źródła</small></div><strong>›</strong></button>
     <div class="v3-sort-row"><span>${rs.length} ${rs.length===1?'receptura':'receptur'}</span><select id="sort"><option value="recent" ${state.sort==='recent'?'selected':''}>Ostatnio używane</option><option value="name" ${state.sort==='name'?'selected':''}>Nazwa A–Z</option><option value="fav" ${state.sort==='fav'?'selected':''}>Ulubione</option></select></div>
     <div class="v3-recipe-list">${rs.length?rs.map(r=>v3RecipeCard(r,true)).join(''):`<div class="v3-empty"><span>🍽️</span><b>Nic tu jeszcze nie ma</b><p>Zmień filtr albo dodaj pierwszą recepturę.</p><button class="btn primary" data-action="new">＋ Nowa receptura</button></div>`}</div>
   </div>`;
@@ -794,11 +832,141 @@ function viewShoppingV20(){
   const groups={};for(const x of state.shopping){const k=shopKey(x.name,x.unit);groups[k]??={...x,qty:0};groups[k].qty+=(+x.qty||0)}const list=Object.values(groups),done=list.filter(x=>x.done).length;
   return `<div class="v3-shopping"><div class="v3-page-head"><div><span class="v3-kicker">PLANOWANIE</span><h1>Zakupy</h1><p>${list.length?`${list.length} pozycji · ${done} już kupione`:'Twoja lista jest pusta.'}</p></div><button class="v3-add-btn" id="add-shopping">＋<span>Dodaj</span></button></div><div class="v3-shop-tabs"><span class="active">Wszystkie ${list.length}</span><span>Do kupienia ${list.length-done}</span><span>Kupione ${done}</span></div><div class="v3-shopping-list">${list.length?list.map(x=>`<label class="v3-shop-row ${x.done?'done':''}"><input type="checkbox" data-shop-check-v20="${escapeHtml(x.id)}" ${x.done?'checked':''}><span class="v3-shop-dot">${x.done?'✓':'•'}</span><span class="v3-shop-name">${escapeHtml(x.name)}</span><strong>${fmt(x.qty)} ${escapeHtml(x.unit)}</strong></label>`).join(''):`<div class="v3-empty"><span>🛒</span><b>Lista jest pusta</b><p>Dodaj składniki z receptury albo wpisz produkt ręcznie.</p></div>`}</div><div class="v3-shop-bottom"><button id="clear-done">Usuń ukończone</button><button id="clear-all-shop">Wyczyść wszystko</button></div></div>`;
 }
+function viewTraditionalV14(){
+ const cuisines=[
+  ['Włochy','Klasyka makaronu, pizzy i risotto','🇮🇹','./photo-carbonara.jpg'],
+  ['Polska','Domowe smaki i tradycyjne dania','🇵🇱','./photo-tomato.jpg'],
+  ['Azjatycka','Wok, makarony i intensywne aromaty','🌏','./photo-carbonara.jpg'],
+  ['Meksykańska','Tacos, salsa i kuchnia uliczna','🇲🇽','./photo-pizza.jpg'],
+  ['Francuska','Technika, sosy i klasyka','🇫🇷','./photo-tomato.jpg'],
+  ['Hiszpańska','Tapas, ryż i wyraziste smaki','🇪🇸','./photo-pizza.jpg'],
+  ['Bliski Wschód','Przyprawy, grill i mezze','🌙','./photo-tomato.jpg'],
+  ['Amerykańska','Comfort food i kuchnia nowoczesna','🇺🇸','./photo-pizza.jpg']
+ ];
+ const q=String(state.traditionalQueryV14||'').toLowerCase();
+ const shown=cuisines.filter(c=>!q||(c[0]+' '+c[1]).toLowerCase().includes(q));
+ const selected=state.tradCatV14&&state.tradCatV14!=="Wszystkie"?state.recipes.filter(r=>r.traditional&&((r.cuisine||'').toLowerCase()===String(state.tradCatV14).toLowerCase()||(r.cuisine||'').toLowerCase().includes(String(state.tradCatV14).toLowerCase().replace('azjatycka','azja')))):[];
+ return `<div class="v3-world"><div class="v3-page-head"><div><span class="v3-kicker">INSPIRACJE</span><h1>Kuchnie świata</h1><p>Odkrywaj klasyczne kierunki kulinarne i przechodź prosto do pasujących receptur.</p></div></div><div class="v3-search v3-world-search"><span>⌕</span><input id="traditionalSearchV14" placeholder="Szukaj kuchni lub regionu…" value="${escapeHtml(state.traditionalQueryV14||'')}"></div><div class="v3-world-grid">${shown.map(c=>`<button class="v3-world-card" data-world-cuisine="${escapeHtml(c[0])}"><img src="${c[3]}" alt="${escapeHtml(c[0])}" onerror="this.src='./photo-generic.jpg'"><div class="v3-world-copy"><b>${c[2]} ${escapeHtml(c[0])}</b><span>${escapeHtml(c[1])}</span></div></button>`).join('')}</div>${selected.length?`<section class="v3-world-results"><div class="v3-section-head"><div><span class="v3-kicker">${escapeHtml(state.tradCatV14)}</span><h2>Receptury</h2></div><button class="v3-link" data-world-clear>Wszystkie</button></div><div class="v3-recipe-list">${selected.map(r=>v3RecipeCard(r,true)).join('')}</div></section>`:`<section class="v3-world-feature"><span>🍽️</span><div><b>Masz ochotę na konkretną kuchnię?</b><p>Wybierz kraj lub region powyżej. Kucharzyna pokaże zapisane klasyczne receptury z tego kierunku.</p></div></section>`}</div>`;
+}
+
 function viewCalculatorsV20(){
  const p=state.pizzaV20||{mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};
  const f0=+p.flour||0,h=+p.hyd||0,s=+p.salt||0,o=+p.oil||0,y=+p.yeast||0;let f=f0;if(p.mode==='dough'){const total=(+p.balls||0)*(+p.ball||0);f=total/(1+h/100+s/100+o/100+y/100)}const water=f*h/100,salt=f*s/100,oil=f*o/100,yeast=f*y/100,total=f+water+salt+oil+yeast,balls=p.mode==='dough'?(+p.balls||0):(+p.ball>0?Math.floor(total/+p.ball):0);
- return `<div class="v3-tools"><div class="v3-page-head"><div><span class="v3-kicker">PRO KUCHNIA</span><h1>Kalkulatory</h1><p>Precyzyjne narzędzia do pizzy, ciasta i przeliczania receptur.</p></div></div><div class="v3-tool-hero"><div><span class="v3-kicker">PIZZA PRO</span><h2>Ciasto pod kontrolą.</h2><p>Ustaw hydrację, kulki, sól, drożdże i czas fermentacji. Wynik liczy się na żywo.</p></div><span class="v3-tool-icon">🍕</span></div><div class="v3-segment"><button id="p2-dough" class="${p.mode==='dough'?'active':''}">Kulki / masa</button><button id="p2-flour" class="${p.mode==='flour'?'active':''}">Mam mąkę</button></div><section class="v3-calc-card"><div class="v3-calc-grid">${p.mode==='flour'?`<label>Mąka<input id="p2-flour-val" type="number" inputmode="decimal" value="${p.flour}"><small>g</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`:`<label>Liczba kulek<input id="p2-balls" type="number" inputmode="decimal" value="${p.balls}"><small>szt.</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`}<label>Hydracja<input id="p2-hyd" type="number" step="0.1" value="${p.hyd}"><small>%</small></label><label>Sól<input id="p2-salt" type="number" step="0.1" value="${p.salt}"><small>%</small></label><label>Oliwa<input id="p2-oil" type="number" step="0.1" value="${p.oil}"><small>%</small></label><label>Drożdże<input id="p2-yeast" type="number" step="0.01" value="${p.yeast}"><small>%</small></label><label>Temperatura<input id="p2-temp" type="number" value="${p.temp}"><small>°C</small></label><label>Fermentacja<input id="p2-time" type="number" value="${p.time}"><small>h</small></label></div></section><section id="p2-live-result" class="v3-result"><div><span>Mąka</span><b>${fmt(f)} g</b></div><div><span>Woda</span><b>${fmt(water)} g</b></div><div><span>Sól</span><b>${fmt(salt)} g</b></div><div><span>Oliwa</span><b>${fmt(oil)} g</b></div><div><span>Drożdże</span><b>${fmt(yeast)} g</b></div><div><span>Ciasto</span><b>${fmt(total)} g</b></div><div><span>Kulki</span><b>${fmt(balls)} × ${fmt(p.ball)} g</b></div></section><section class="v3-calc-card"><div class="v3-section-head"><div><span class="v3-kicker">FERMENTACJA</span><h2>Preferment</h2></div></div><div class="v3-calc-grid"><label>Preferment<input id="p2-pref" type="number" value="${p.poolish}"><small>% mąki</small></label><label>Nawodnienie<input id="p2-prefhyd" type="number" value="${p.prefermentHyd}"><small>%</small></label></div><div class="v3-ferment-result">${p.poolish>0?`Preferment: <b>${fmt(f*p.poolish/100)} g mąki</b> · ${fmt(f*p.poolish/100*p.prefermentHyd/100)} g wody`:'Brak prefermentu'}<span>${fmt(p.time)} h · ${fmt(p.temp)}°C</span></div></section><div class="v3-tool-actions"><button class="v3-primary-action" id="p2-save">Zapisz profil</button><button id="p2-reset">Reset</button></div></div>`;
+ return `<div class="v3-tools"><div class="v3-page-head"><div><span class="v3-kicker">PRO KUCHNIA</span><h1>Kalkulatory</h1><p>Precyzyjne narzędzia do pizzy, ciasta i przeliczania receptur.</p></div></div><div class="v3-tool-hero"><div><span class="v3-kicker">PIZZA PRO</span><h2>Ciasto pod kontrolą.</h2><p>Ustaw hydrację, kulki, sól, drożdże i czas fermentacji. Wynik liczy się na żywo.</p></div><span class="v3-tool-icon">🍕</span></div><div class="v3-segment"><button id="p2-dough" class="${p.mode==='dough'?'active':''}">Kulki / masa</button><button id="p2-flour" class="${p.mode==='flour'?'active':''}">Mam mąkę</button></div><section class="v3-profile-picker"><div class="v3-profile-picker-head"><div><b>Profile pizzy</b><small>Zapisane parametry procesu</small></div><button class="v3-profile-new" id="p2-profile-new">＋ Nowy</button></div><div class="v3-profile-list">${state.pizzaProfiles.length?state.pizzaProfiles.map(x=>`<button class="v3-profile-option ${state.activePizzaProfileId===x.id?'active':''}" data-pizza-profile="${escapeHtml(x.id)}"><span class="v3-profile-icon">🍕</span><div><b>${escapeHtml(x.name||'Profil pizzy')}</b><span>${fmt(x.values?.hyd||65)}% · ${fmt(x.values?.time||24)} h · ${fmt(x.values?.ball||250)} g</span></div><em>${state.activePizzaProfileId===x.id?'✓':'›'}</em></button>`).join(''):`<div class="v3-profile-empty">Nie masz jeszcze zapisanych profili. Ustaw parametry i wybierz „Zapisz profil”.</div>`}</div></section><section class="v3-calc-card"><div class="v3-calc-grid">${p.mode==='flour'?`<label>Mąka<input id="p2-flour-val" type="number" inputmode="decimal" value="${p.flour}"><small>g</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`:`<label>Liczba kulek<input id="p2-balls" type="number" inputmode="decimal" value="${p.balls}"><small>szt.</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`}<label>Hydracja<input id="p2-hyd" type="number" step="0.1" value="${p.hyd}"><small>%</small></label><label>Sól<input id="p2-salt" type="number" step="0.1" value="${p.salt}"><small>%</small></label><label>Oliwa<input id="p2-oil" type="number" step="0.1" value="${p.oil}"><small>%</small></label><label>Drożdże<input id="p2-yeast" type="number" step="0.01" value="${p.yeast}"><small>%</small></label><label>Temperatura<input id="p2-temp" type="number" value="${p.temp}"><small>°C</small></label><label>Fermentacja<input id="p2-time" type="number" value="${p.time}"><small>h</small></label></div></section><section id="p2-live-result" class="v3-result"><div><span>Mąka</span><b>${fmt(f)} g</b></div><div><span>Woda</span><b>${fmt(water)} g</b></div><div><span>Sól</span><b>${fmt(salt)} g</b></div><div><span>Oliwa</span><b>${fmt(oil)} g</b></div><div><span>Drożdże</span><b>${fmt(yeast)} g</b></div><div><span>Ciasto</span><b>${fmt(total)} g</b></div><div><span>Kulki</span><b>${fmt(balls)} × ${fmt(p.ball)} g</b></div></section><section class="v3-calc-card"><div class="v3-section-head"><div><span class="v3-kicker">FERMENTACJA</span><h2>Preferment</h2></div></div><div class="v3-calc-grid"><label>Preferment<input id="p2-pref" type="number" value="${p.poolish}"><small>% mąki</small></label><label>Nawodnienie<input id="p2-prefhyd" type="number" value="${p.prefermentHyd}"><small>%</small></label></div><div class="v3-ferment-result">${p.poolish>0?`Preferment: <b>${fmt(f*p.poolish/100)} g mąki</b> · ${fmt(f*p.poolish/100*p.prefermentHyd/100)} g wody`:'Brak prefermentu'}<span>${fmt(p.time)} h · ${fmt(p.temp)}°C</span></div></section><div class="v3-tool-actions"><button class="v3-primary-action" id="p2-save">Zapisz profil</button><button id="p2-reset">Reset</button></div></div>`;
 }
 function viewSettings(){return `<div class="v3-settings"><div class="v3-page-head"><div><span class="v3-kicker">PERSONALIZACJA</span><h1>Ustawienia</h1><p>Dopasuj Kucharzynę do swojej kuchni i sposobu pracy.</p></div></div><section class="v3-settings-card v3-settings-profile"><div class="v3-profile-avatar">👨‍🍳</div><div><b>Kucharzyna</b><p>Twoja kuchnia. Twoje receptury.</p></div></section><section class="v3-settings-card"><div class="v3-setting-head"><span>◐</span><div><b>Wygląd</b><small>Motyw aplikacji</small></div></div><select id="theme"><option value="system">Automatyczny</option><option value="light">Jasny</option><option value="dark">Ciemny</option></select></section><section class="v3-settings-card"><div class="v3-setting-head"><span>♟</span><div><b>Tryb aplikacji</b><small>Interfejs profesjonalny lub uproszczony</small></div></div><select id="profile"><option value="pro">Profesjonalny</option><option value="amateur">Amator</option></select></section><section class="v3-settings-card"><div class="v3-setting-head"><span>▣</span><div><b>Dane i backup</b><small>Wszystko zostaje na tym urządzeniu.</small></div></div><div class="v3-setting-buttons"><button id="export">Eksportuj backup</button><button id="importBackup">Importuj backup</button><button id="openImporter">Importuj recepturę</button><button id="addCategory">＋ Dodaj kategorię</button></div></section><section class="v3-settings-note"><b>🔒 Prywatność</b><p>Kucharzyna nie potrzebuje konta, reklam ani trackera. Receptury, notatki, zakupy i lokalne zdjęcia są przechowywane na Twoim urządzeniu.</p></section></div>`;
 }
 
+
+/* ============================================================
+   Kucharzyna 3.1 — functional UI layer
+   ============================================================ */
+function k3ApplyThemeStable(){
+  const root=document.documentElement;
+  const raw=state.settings?.theme||'system';
+  const prefersDark=!!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  const dark=raw==='dark'||(raw==='system'&&prefersDark);
+  root.classList.toggle('dark',dark);
+  root.classList.toggle('light',!dark);
+  root.dataset.theme=dark?'dark':'light';
+  root.dataset.themePreference=raw;
+  root.style.colorScheme=dark?'dark':'light';
+  document.body.classList.toggle('amateur',state.settings?.profile==='amateur');
+  document.body.dataset.profile=state.settings?.profile||'pro';
+  if(!window.__k3SystemThemeBound){
+    const mq=window.matchMedia?.('(prefers-color-scheme: dark)');
+    if(mq){mq.addEventListener?.('change',()=>{if(state.settings?.theme==='system'){k3ApplyThemeStable();toast('Motyw systemowy zaktualizowany')}});window.__k3SystemThemeBound=true;}
+  }
+}
+applyTheme=k3ApplyThemeStable;
+
+function k3TopbarTitle(){
+  const el=$('#topbarTitle'); if(!el)return;
+  const titles={start:'Start',recipes:'Przepisy',traditional:'Kuchnie świata',calculators:'Kalkulatory',shopping:'Zakupy',settings:'Ustawienia',edit:'Edytuj recepturę',cook:'Gotuję',google:'Szukaj w Google'};
+  let title=titles[state.route]||'Kucharzyna';
+  if(state.route==='recipe'){const r=state.recipes.find(x=>x.id===state.selectedId);title=r?.name||'Receptura';}
+  el.textContent=title;
+  const back=$('#globalBack');if(back)back.style.visibility=state.route==='start'?'hidden':'visible';
+}
+
+const _k3RenderV20=renderV20;
+renderV20=function(){_k3RenderV20();requestAnimationFrame(k3TopbarTitle)};
+
+/* Google recipe search: explicit user action, opens Google in a new tab. */
+function k3GoogleRecipeSearch(){
+  const q=(state.googleQuery||state.query||'').trim()||'przepisy kulinarne';
+  const url='https://www.google.com/search?q='+encodeURIComponent(q+' przepis');
+  window.open(url,'_blank','noopener,noreferrer');
+}
+
+/* Premium world-cuisine screen. */
+const K3_WORLD=[
+  ['Włochy','Pasta, pizza i klasyka','🇮🇹','./photo-carbonara.jpg'],
+  ['Polska','Domowe i regionalne','🇵🇱','./photo-generic.jpg'],
+  ['Japonia','Umami i precyzja','🇯🇵','./photo-generic.jpg'],
+  ['Meksyk','Ogień, kukurydza i limonka','🇲🇽','./photo-tomato.jpg'],
+  ['Tajlandia','Kwaśne, ostre i aromatyczne','🇹🇭','./photo-generic.jpg'],
+  ['Francja','Technika i sosy','🇫🇷','./photo-generic.jpg'],
+  ['Hiszpania','Tapas i kuchnia śródziemnomorska','🇪🇸','./photo-pizza.jpg'],
+  ['Bliski Wschód','Przyprawy, zioła i grill','🌍','./photo-tomato.jpg']
+];
+function viewWorldPremium(){
+  const q=(state.worldQuery||'').toLowerCase();
+  const list=K3_WORLD.filter(x=>!q||(x[0]+' '+x[1]).toLowerCase().includes(q));
+  const selected=state.worldCuisine?state.recipes.filter(r=>r.traditional&&String(r.cuisine||'').toLowerCase().includes(String(state.worldCuisine).toLowerCase())):[];
+  return `<div class="v3-world"><div class="v3-page-head"><div><span class="v3-kicker">INSPIRACJE</span><h1>Kuchnie świata</h1><p>Odkrywaj charakterystyczne smaki, techniki i dania z różnych regionów.</p></div></div><div class="v3-search v3-world-search"><span>⌕</span><input id="worldSearch" placeholder="Szukaj kraju lub kuchni…" value="${escapeHtml(state.worldQuery||'')}"></div><div class="v3-world-grid">${list.map(x=>`<button class="v3-world-card ${state.worldCuisine===x[0]?'active':''}" data-world-cat="${escapeHtml(x[0])}"><img src="${x[3]}" alt="${escapeHtml(x[0])}" loading="lazy" onerror="this.src='./photo-generic.jpg'"><div class="v3-world-copy"><b>${x[2]} ${escapeHtml(x[0])}</b><span>${escapeHtml(x[1])}</span></div></button>`).join('')}</div>${state.worldCuisine?`<section class="v3-world-results"><div class="v3-section-head"><div><span class="v3-kicker">${escapeHtml(state.worldCuisine)}</span><h2>Receptury</h2></div><button class="v3-link" data-world-clear>Wyczyść</button></div>${selected.length?`<div class="v3-recipe-list">${selected.map(r=>v3RecipeCard(r,true)).join('')}</div>`:`<div class="v3-empty"><span>🍽️</span><b>Jeszcze nie masz receptury z tej kuchni</b><p>Możesz dodać własną albo wyszukać inspirację w Google.</p><button class="btn primary" data-google="1">Szukaj w Google</button></div>`}</section>`:`<section class="v3-world-feature"><div class="v3-section-head"><div><span class="v3-kicker">WYBIERZ KIERUNEK</span><h2>Co znajdziesz?</h2></div></div><div class="v3-world-pills"><span>🍝 Techniki</span><span>🌶️ Składniki</span><span>🔥 Obróbka</span><span>📖 Tradycje</span></div></section>`}</div>`;
+}
+viewTraditionalV14=viewWorldPremium;
+
+/* Calculator profiles are first-class: choose, load, save, delete. */
+function k3ProfilePicker(){
+  const profiles=state.pizzaProfiles||[];
+  const active=state.activePizzaProfileId;
+  return `<section class="v3-profile-picker"><div class="v3-profile-picker-head"><div><b>Profile pizzy</b><small>Zapisane ustawienia ciasta i fermentacji</small></div><button class="v3-google-btn" id="p2-new-profile">＋ Nowy</button></div><div class="v3-profile-list">${profiles.length?profiles.map(p=>`<button class="v3-profile-option ${p.id===active?'active':''}" data-profile-load="${p.id}"><span class="v3-profile-icon">🍕</span><span><b>${escapeHtml(p.name)}</b><span>${p.mode==='flour'?'na mąkę':'na kulki'} · ${fmt(p.values?.hyd||0)}% · ${fmt(p.values?.time||0)} h</span></span><em>${p.id===active?'✓':''}</em></button>`).join(''):`<div class="v3-empty"><span>🍕</span><b>Brak zapisanych profili</b><p>Zapisz pierwszy profil, żeby jednym kliknięciem wracać do swoich parametrów.</p></div>`}</div>${active?`<div class="v3-profile-actions"><button id="p2-delete-profile">Usuń wybrany profil</button></div>`:''}</section>`;
+}
+viewCalculatorsV20=function(){
+ const p=state.pizzaV20||{mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};
+ const f0=+p.flour||0,h=+p.hyd||0,s=+p.salt||0,o=+p.oil||0,y=+p.yeast||0;let f=f0;if(p.mode==='dough'){const totalTarget=(+p.balls||0)*(+p.ball||0);f=totalTarget/(1+h/100+s/100+o/100+y/100)}
+ const water=f*h/100,salt=f*s/100,oil=f*o/100,yeast=f*y/100,total=f+water+salt+oil+yeast,balls=p.mode==='dough'?(+p.balls||0):(+p.ball>0?Math.floor(total/+p.ball):0);
+ const profiles=state.pizzaProfiles||[],active=state.activePizzaProfileId;
+ return `<div class="v3-tools"><div class="v3-page-head"><div><span class="v3-kicker">PRO KUCHNIA</span><h1>Kalkulatory</h1><p>Precyzyjne narzędzia do pizzy, ciasta i przeliczania receptur.</p></div></div><div class="v3-tool-hero"><div><span class="v3-kicker">PIZZA PRO</span><h2>Ciasto pod kontrolą.</h2><p>Ustaw parametry raz, zapisz profil i wracaj do niego przy kolejnych produkcjach.</p></div><span class="v3-tool-icon">🍕</span></div><section class="v3-profile-picker"><div class="v3-profile-picker-head"><div><b>Profile pizzy</b><small>${profiles.length?`${profiles.length} zapisanych ustawień`:'Zapisz własne ustawienia ciasta'}</small></div><button class="v3-profile-new" id="p2-new-profile">＋ Nowy</button></div><div class="v3-profile-list">${profiles.length?profiles.map(pr=>`<button class="v3-profile-option ${pr.id===active?'active':''}" data-profile-load="${escapeHtml(pr.id)}"><span class="v3-profile-icon">🍕</span><span><b>${escapeHtml(pr.name||'Profil pizzy')}</b><span>${pr.mode==='flour'?'na mąkę':'na kulki'} · ${fmt(pr.values?.hyd||0)}% · ${fmt(pr.values?.time||0)} h · ${fmt(pr.values?.ball||0)} g</span></span><em>${pr.id===active?'✓':'›'}</em></button>`).join(''):`<div class="v3-profile-empty">Nie masz jeszcze zapisanych profili. Ustaw parametry poniżej i wybierz „Zapisz profil”.</div>`}</div>${active?`<div class="v3-profile-actions"><button id="p2-delete-profile">Usuń wybrany profil</button></div>`:''}</section><div class="v3-segment"><button id="p2-dough" class="${p.mode==='dough'?'active':''}">Kulki / masa</button><button id="p2-flour" class="${p.mode==='flour'?'active':''}">Mam mąkę</button></div><section class="v3-calc-card"><div class="v3-calc-grid">${p.mode==='flour'?`<label>Mąka<input id="p2-flour-val" type="number" inputmode="decimal" value="${p.flour}"><small>g</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`:`<label>Liczba kulek<input id="p2-balls" type="number" inputmode="decimal" value="${p.balls}"><small>szt.</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`}<label>Hydracja<input id="p2-hyd" type="number" step="0.1" value="${p.hyd}"><small>%</small></label><label>Sól<input id="p2-salt" type="number" step="0.1" value="${p.salt}"><small>%</small></label><label>Oliwa<input id="p2-oil" type="number" step="0.1" value="${p.oil}"><small>%</small></label><label>Drożdże<input id="p2-yeast" type="number" step="0.01" value="${p.yeast}"><small>%</small></label><label>Temperatura<input id="p2-temp" type="number" value="${p.temp}"><small>°C</small></label><label>Fermentacja<input id="p2-time" type="number" value="${p.time}"><small>h</small></label></div></section><section id="p2-live-result" class="v3-result"><div><span>Mąka</span><b>${fmt(f)} g</b></div><div><span>Woda</span><b>${fmt(water)} g</b></div><div><span>Sól</span><b>${fmt(salt)} g</b></div><div><span>Oliwa</span><b>${fmt(oil)} g</b></div><div><span>Drożdże</span><b>${fmt(yeast)} g</b></div><div><span>Ciasto</span><b>${fmt(total)} g</b></div><div><span>Kulki</span><b>${fmt(balls)} × ${fmt(p.ball)} g</b></div></section><section class="v3-calc-card"><div class="v3-section-head"><div><span class="v3-kicker">FERMENTACJA</span><h2>Preferment</h2></div></div><div class="v3-calc-grid"><label>Preferment<input id="p2-pref" type="number" value="${p.poolish}"><small>% mąki</small></label><label>Nawodnienie prefermentu<input id="p2-prefhyd" type="number" value="${p.prefermentHyd}"><small>%</small></label></div><div class="v3-ferment-result">${p.poolish>0?`Preferment: <b>${fmt(f*p.poolish/100)} g mąki</b> · ${fmt(f*p.poolish/100*p.prefermentHyd/100)} g wody`:'Brak prefermentu'}<span>${fmt(p.time)} h · ${fmt(p.temp)}°C</span></div></section><div class="v3-tool-actions"><button class="v3-primary-action" id="p2-save">Zapisz profil</button><button id="p2-reset">Reset</button></div></div>`;
+};
+
+const _k3Bind=bindV20;
+bindV20=function(){
+  _k3Bind();
+  $('#worldSearch')?.addEventListener('input',e=>{state.worldQuery=e.target.value;clearTimeout(window.__worldTimer);window.__worldTimer=setTimeout(()=>renderV20(),100)});
+  $$('#main [data-world-cat]').forEach(b=>b.addEventListener('click',()=>{state.worldCuisine=b.dataset.worldCat;renderV20()}));
+  $('#main [data-world-clear]')?.addEventListener('click',()=>{state.worldCuisine='';renderV20()});
+  $('#googleRecipeSearch')?.addEventListener('click',k3GoogleRecipeSearch);
+  $('#googleRecipeGo')?.addEventListener('click',openGoogleRecipeSearch);
+  $('#googleRecipeGo2')?.addEventListener('click',openGoogleRecipeSearch);
+  $('#googleRecipeSearchInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')k3GoogleRecipeSearch()});
+  $$('#main [data-profile-load]').forEach(b=>b.addEventListener('click',async()=>{const p=(state.pizzaProfiles||[]).find(x=>x.id===b.dataset.profileLoad);if(!p)return;state.activePizzaProfileId=p.id;state.pizzaV20={...p.values};renderV20();toast('Profil wczytany')}));
+  $('#p2-delete-profile')?.addEventListener('click',async()=>{if(!state.activePizzaProfileId)return;await del('pizzaProfiles',state.activePizzaProfileId);state.pizzaProfiles=await getAll('pizzaProfiles');state.activePizzaProfileId=null;toast('Profil usunięty');renderV20()});
+  const saveProfile=async()=>{const p=state.pizzaV20||{};openModal(`<h2>Zapisz profil pizzy</h2><p class="muted">Zapisz aktualne parametry pod własną nazwą.</p><input id="k3-profile-name" placeholder="Np. Napoli 65% / 24h"><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Anuluj</button><button class="btn primary" id="k3-profile-ok">Zapisz</button></div>`);$('#k3-profile-ok')?.addEventListener('click',async()=>{const name=$('#k3-profile-name')?.value.trim();if(!name)return;const rec={id:uid(),name,mode:p.mode||'dough',values:{...p}};await put('pizzaProfiles',rec);state.pizzaProfiles=await getAll('pizzaProfiles');state.activePizzaProfileId=rec.id;closeModal();renderV20();toast('Profil zapisany')})};
+  const oldSave=$('#p2-save'); if(oldSave){const fresh=oldSave.cloneNode(true);oldSave.replaceWith(fresh);fresh.addEventListener('click',saveProfile)}
+  $('#p2-new-profile')?.addEventListener('click',()=>{state.activePizzaProfileId=null;state.pizzaV20={mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};renderV20();toast('Nowy profil — ustaw parametry')});
+};
+
+/* Add the Google button without changing the existing local search. */
+const _k3ViewRecipes=viewRecipes;
+viewRecipes=function(){
+  const html=_k3ViewRecipes();
+  return html.replace('    <div class="v3-chips">','    <div class="v3-web-search"><button class="v3-google-btn" id="googleRecipeSearch"><span>G</span> Szukaj w Google</button></div><div class="v3-chips">');
+};
+
+/* Extra local visual fallbacks by dish family. */
+const _k3RecipeImage=recipeImage;
+recipeImage=function(r){
+  const direct=_k3RecipeImage(r); if(direct && direct!=='./photo-generic.jpg') return direct;
+  const c=String(r?.category||'').toLowerCase(), n=String(r?.name||'').toLowerCase();
+  if(/deser|ciasto|słod/.test(c+' '+n)) return './photo-generic.jpg';
+  if(/mięso|woł|wieprz|kurcz|drób/.test(c+' '+n)) return './photo-tomato.jpg';
+  if(/ryb|owoc.*morza|krewet/.test(c+' '+n)) return './photo-generic.jpg';
+  if(/sałat/.test(c+' '+n)) return './photo-tomato.jpg';
+  return direct;
+};
+
+/* Re-apply stable theme and topbar once the app has booted. */
+setTimeout(()=>{k3ApplyThemeStable();k3TopbarTitle()},0);
