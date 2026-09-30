@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto.randomUUID?crypto.randomUUID():"id-"+Date.now()+"-"+Math.random().toString(16).slice(2);
 const now=()=>new Date().toISOString();
-let state={route:"start",recipes:[],categories:[],shopping:[],settings:{theme:"system",profile:"pro"},history:[],cook:{},selectedCat:"Wszystkie",query:"",sort:"recent"};
+let state={route:"start",recipes:[],categories:[],shopping:[],settings:{theme:"dark",profile:"pro"},history:[],cook:{},selectedCat:"Wszystkie",query:"",sort:"recent"};
 const baseCats=["Pizza","Pasta","Sosy","Mięso","Ryby","Owoce morza","Warzywa","Desery","Pieczywo","Zupy","Sałatki","Cocktaile","Prep","Sosy bazowe","Inne"];
 
 const seed=[
@@ -22,6 +22,10 @@ function recipeImage(r){
   const local=RECIPE_IMAGES[r?.name];
   if(local) return local;
   if(typeof r?.image==='string' && /^(data:|blob:)/.test(r.image)) return r.image;
+  const c=String(r?.category||'').toLowerCase();
+  if(c.includes('pizza')||c.includes('pieczy')) return './photo-pizza.jpg';
+  if(c.includes('pasta')||c.includes('makaron')) return './photo-carbonara.jpg';
+  if(c.includes('sos')||c.includes('zup')) return './photo-tomato.jpg';
   return DEFAULT_RECIPE_IMAGE;
 }
 function ingredientGroupsSafe(r){return (r?.sections||[]).flatMap(s=>s.ingredients||[])}
@@ -667,6 +671,8 @@ function bindV20(){
   $$('#main [data-shop-recipe]').forEach(b=>b.onclick=()=>addRecipeShoppingV20(b.dataset.shopRecipe));
   $$('#main [data-back]').forEach(b=>b.onclick=()=>nav(b.dataset.back||'start'));
   $$('#main [data-cat]').forEach(b=>b.onclick=()=>{state.selectedCat=b.dataset.cat;renderV20()});
+  const search=$('#recipeSearch'); if(search){search.oninput=()=>{state.query=search.value;clearTimeout(window.__k3SearchTimer);window.__k3SearchTimer=setTimeout(()=>renderV20(),80)}}
+  const sort=$('#sort'); if(sort){sort.onchange=()=>{state.sort=sort.value;renderV20()}}
   $$('#main [data-trad-v14]').forEach(b=>b.onclick=()=>{state.tradCatV14=b.dataset.tradV14;renderV20()});
   if(state.route==='settings'){
     const theme=$('#theme'); if(theme){theme.value=state.settings.theme;theme.onchange=()=>{state.settings.theme=theme.value;saveSetting();applyTheme();toast('Motyw zapisany')}}
@@ -717,3 +723,82 @@ function recipeViewV20(id){const r=state.recipes.find(x=>x.id===id);if(!r)return
 
 function initKucharzyna20(){nav=function(route){if(route===state.route && route==='start'){document.querySelector('.main-scroll')?.scrollTo(0,0);return}state.route=route;applyTheme();renderV20();requestAnimationFrame(()=>document.querySelector('.main-scroll')?.scrollTo({top:0,left:0,behavior:'auto'}))};window.renderV20=renderV20}
 initKucharzyna20();
+
+
+/* ============================================================
+   Kucharzyna 3.0 — Premium UI Redesign
+   Visual layer only: existing data/actions remain compatible.
+   ============================================================ */
+function v3Icon(icon, label){return `<span class="v3-icon" aria-hidden="true">${icon}</span><span>${label}</span>`}
+function v3RecipeCard(r,wide=false){
+  const src=recipeImage(r); const total=(+r.prep||0)+(+r.cook||0);
+  return `<article class="v3-recipe-card ${wide?'v3-wide':''}" data-open="${r.id}">
+    <div class="v3-card-photo"><img src="${escapeHtml(src)}" loading="lazy" alt="${escapeHtml(r.name)}" onerror="this.onerror=null;this.src='./photo-generic.jpg'"><button class="v3-heart" data-fav="${r.id}" aria-label="${r.favorite?'Usuń z ulubionych':'Dodaj do ulubionych'}">${r.favorite?'♥':'♡'}</button></div>
+    <div class="v3-card-body"><div class="v3-card-kicker">${escapeHtml(r.category||'Przepis')} ${r.flag||''}</div><h3>${escapeHtml(r.name)}</h3><div class="v3-card-meta"><span>◷ ${fmt(total)} min</span><span>♟ ${fmt(r.yield||r.servings||0)} ${escapeHtml(r.yieldUnit||'porc.')}</span>${r.traditional?'<span class="v3-gold">★ Klasyczna</span>':''}</div></div>
+  </article>`;
+}
+function viewStart(){
+  const recent=[...state.recipes].filter(r=>r.lastUsedAt).sort((a,b)=>(b.lastUsedAt||'').localeCompare(a.lastUsedAt||'')).slice(0,3);
+  const fav=state.recipes.filter(r=>r.favorite).slice(0,3);
+  const hero=state.recipes.find(r=>r.name==='Carbonara')||state.recipes[0];
+  return `<div class="v3-home">
+    <section class="v3-home-hero">
+      <div class="v3-hero-image">${hero?`<img src="${escapeHtml(recipeImage(hero))}" alt="${escapeHtml(hero.name)}">`:''}<div class="v3-hero-overlay"></div>
+        <div class="v3-hero-copy"><div class="v3-brand-mark">👨‍🍳</div><div class="v3-kicker">TWOJA KUCHNIA · TWOJE ZASADY</div><h1>Kucharzyna</h1><p>Twoje receptury, kalkulatory i kuchenny workflow. Wszystko pod ręką.</p></div>
+        <button class="v3-hero-settings" data-action="settings" aria-label="Ustawienia">⚙</button>
+      </div>
+    </section>
+    <section class="v3-menu-grid">
+      <button class="v3-menu-card v3-menu-recipes" data-action="recipes"><span class="v3-menu-icon">🍝</span><b>Przepisy</b><small>Twoja książka kucharska</small></button>
+      <button class="v3-menu-card v3-menu-world" data-route2="traditional"><span class="v3-menu-icon">🌍</span><b>Kuchnie świata</b><small>Tradycyjne smaki</small></button>
+      <button class="v3-menu-card v3-menu-shop" data-action="shopping"><span class="v3-menu-icon">🛒</span><b>Zakupy</b><small>Lista i planowanie</small></button>
+      <button class="v3-menu-card v3-menu-calc" data-action="calculators"><span class="v3-menu-icon">🧮</span><b>Kalkulatory</b><small>Pizza, ciasto i więcej</small></button>
+      <button class="v3-menu-card v3-menu-fav" data-action="fav"><span class="v3-menu-icon">♥</span><b>Ulubione</b><small>Twoje najlepsze</small></button>
+      <button class="v3-menu-card v3-menu-settings" data-action="settings"><span class="v3-menu-icon">⚙</span><b>Ustawienia</b><small>Motyw, profil, backup</small></button>
+    </section>
+    ${recent.length?`<section class="v3-section"><div class="v3-section-head"><div><span class="v3-kicker">WRACAJ DO GOTOWANIA</span><h2>Ostatnio używane</h2></div><button class="v3-link" data-route2="recipes">Wszystkie →</button></div><div class="v3-horizontal">${recent.map(r=>v3RecipeCard(r)).join('')}</div></section>`:''}
+    ${fav.length?`<section class="v3-section"><div class="v3-section-head"><div><span class="v3-kicker">TWOJE PEWNIAKI</span><h2>Ulubione</h2></div></div><div class="v3-horizontal">${fav.map(r=>v3RecipeCard(r)).join('')}</div></section>`:''}
+  </div>`;
+}
+function viewRecipes(){
+  let rs=[...state.recipes];
+  if(state.query)rs=rs.filter(r=>(r.name+' '+r.description+' '+(r.tags||[]).join(' ')).toLowerCase().includes(state.query.toLowerCase()));
+  if(state.selectedCat!=='Wszystkie')rs=rs.filter(r=>r.category===state.selectedCat);
+  if(state.sort==='name')rs.sort((a,b)=>a.name.localeCompare(b.name)); else if(state.sort==='fav')rs.sort((a,b)=>Number(b.favorite)-Number(a.favorite)); else rs.sort((a,b)=>(b.lastUsedAt||b.updatedAt||'').localeCompare(a.lastUsedAt||a.updatedAt||''));
+  return `<div class="v3-library"><div class="v3-page-head"><div><span class="v3-kicker">TWOJA BAZA</span><h1>Przepisy</h1><p>Wszystko, co chcesz ugotować, zapisane w jednym miejscu.</p></div><button class="v3-add-btn" data-action="new">＋<span>Nowa</span></button></div>
+    <div class="v3-search"><span>⌕</span><input id="recipeSearch" placeholder="Szukaj przepisu, składnika…" value="${escapeHtml(state.query)}"></div>
+    <div class="v3-chips"><button class="v3-chip ${state.selectedCat==='Wszystkie'?'active':''}" data-cat="Wszystkie">Wszystkie</button>${state.categories.map(c=>`<button class="v3-chip ${state.selectedCat===c.name?'active':''}" data-cat="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`).join('')}</div>
+    <div class="v3-sort-row"><span>${rs.length} ${rs.length===1?'receptura':'receptur'}</span><select id="sort"><option value="recent" ${state.sort==='recent'?'selected':''}>Ostatnio używane</option><option value="name" ${state.sort==='name'?'selected':''}>Nazwa A–Z</option><option value="fav" ${state.sort==='fav'?'selected':''}>Ulubione</option></select></div>
+    <div class="v3-recipe-list">${rs.length?rs.map(r=>v3RecipeCard(r,true)).join(''):`<div class="v3-empty"><span>🍽️</span><b>Nic tu jeszcze nie ma</b><p>Zmień filtr albo dodaj pierwszą recepturę.</p><button class="btn primary" data-action="new">＋ Nowa receptura</button></div>`}</div>
+  </div>`;
+}
+function recipeViewV20(id){
+  const r=state.recipes.find(x=>x.id===id); if(!r)return viewRecipes();
+  const ingredients=ingredientGroups(r), desc=recipeDescription(r), total=(+r.prep||0)+(+r.cook||0);
+  return `<div class="v3-recipe-detail">
+    <section class="v3-detail-hero"><img src="${escapeHtml(recipeImage(r))}" alt="${escapeHtml(r.name)}" onerror="this.onerror=null;this.src='./photo-generic.jpg'"><div class="v3-detail-gradient"></div><div class="v3-detail-top"><button class="v3-round" data-fav="${r.id}">${r.favorite?'♥':'♡'}</button><button class="v3-round" data-edit="${r.id}">⋯</button></div><div class="v3-detail-title"><div class="v3-kicker">${escapeHtml(r.category||'PRZEPIS')} ${r.flag||''} ${r.traditional?' · ★ KLASYCZNA':''}</div><h1>${escapeHtml(r.name)}</h1><p>${escapeHtml(desc)}</p></div></section>
+    <div class="v3-stat-row"><div><span>◷</span><b>${fmt(total)} min</b><small>czas</small></div><div><span>♟</span><b>${fmt(r.yield||r.servings||0)} ${escapeHtml(r.yieldUnit||'porc.')}</b><small>wydajność</small></div><div><span>♨</span><b>${r.temp?escapeHtml(r.temp)+'°C':'—'}</b><small>temperatura</small></div></div>
+    <div class="v3-detail-actions"><button class="v3-primary-action" data-cook="${r.id}">👨‍🍳 GOTUJĘ</button><button data-shop-recipe="${r.id}">🛒 Zakupy</button><button data-scale="${r.id}">⚖ Przelicz</button></div>
+    <section class="v3-content-section"><div class="v3-section-head"><div><span class="v3-kicker">RECEPTURA</span><h2>Składniki</h2></div><span class="v3-count">${ingredients.length}</span></div>${(r.sections||[]).map(s=>`<div class="v3-ingredient-group">${(r.sections||[]).length>1?`<div class="v3-group-title">${escapeHtml(s.name)}</div>`:''}${(s.ingredients||[]).map(i=>`<button class="v3-ingredient" data-recipe-ing="${i.id}"><span class="v3-ing-icon">•</span><span>${escapeHtml(i.name)}</span><strong>${fmt(i.qty??0)} ${escapeHtml(i.unit||'g')}</strong></button>`).join('')}</div>`).join('')}</section>
+    <section class="v3-content-section"><div class="v3-section-head"><div><span class="v3-kicker">TECHNIKA</span><h2>Jak zrobić</h2></div><span class="v3-count">${(r.steps||[]).length}</span></div><div class="v3-steps">${(r.steps||[]).map((s,i)=>`<article><div class="v3-step-no">${i+1}</div><div><span>KROK ${i+1}</span><p>${escapeHtml(s.text)}</p></div></article>`).join('')}</div></section>
+    <section class="v3-tip"><span>💡</span><div><b>Na co zwrócić uwagę</b><p>${escapeHtml(r.notes||'Przygotuj wszystkie składniki przed rozpoczęciem pracy. Kontroluj temperaturę i konsystencję, a końcową korektę smaku zostaw na sam koniec.')}</p></div></section>
+  </div>`;
+}
+function viewCookV20(){
+  const r=state.recipes.find(x=>x.id===state.selectedId); if(!r)return viewRecipes(); const st=cookStateFor(r),steps=r.steps||[],ingredients=ingredientGroups(r),doneSteps=steps.filter(s=>st.steps[s.id]).length,pct=steps.length?Math.round(doneSteps/steps.length*100):0;
+  if(st.completed)return `<div class="v3-cook-complete"><div class="v3-complete-photo"><img src="${escapeHtml(recipeImage(r))}" alt=""></div><div class="v3-check">✓</div><span class="v3-kicker">GOTOWANIE ZAKOŃCZONE</span><h1>${escapeHtml(r.name)}</h1><p>Robota zrobiona. Wszystkie kroki zostały ukończone i postęp został zapisany na tym urządzeniu.</p><div class="v3-complete-actions"><button class="v3-primary-action" id="cook-back-recipe">← Wróć do receptury</button><button id="cook-reset-v20">↻ Gotuj ponownie</button></div></div>`;
+  const active=Math.min(Math.max(+st.activeStep||0,0),Math.max(steps.length-1,0)),step=steps[active];
+  return `<div class="v3-cook"><div class="v3-cook-head"><div><span class="v3-kicker">GOTUJĘ · ${pct}%</span><h1>${escapeHtml(r.name)}</h1></div><span class="v3-progress-label">${steps.length?active+1:0} / ${steps.length}</span></div><div class="v3-progress"><span style="width:${pct}%"></span></div><div class="v3-cook-photo"><img src="${escapeHtml(recipeImage(r))}" alt="${escapeHtml(r.name)}"></div><section class="v3-focus"><div class="v3-step-badge">${active+1}</div><div><span class="v3-kicker">AKTUALNY KROK</span><h2>${step?escapeHtml(step.text):'Brak kroków w tej recepturze.'}</h2></div></section><div class="v3-cook-info"><div><span>⏱</span><b>${fmt(r.cook||r.prep||0)} min</b><small>orientacyjnie</small></div><div><span>♨</span><b>${r.temp?escapeHtml(r.temp)+'°C':'Według receptury'}</b><small>temperatura</small></div></div><div class="v3-tip"><span>💡</span><div><b>Wskazówka</b><p>${escapeHtml(r.notes||'Pracuj spokojnie i kontroluj konsystencję zamiast opierać się wyłącznie na czasie.')}</p></div></div><div class="v3-cook-actions"><button id="cook-prev" ${active<=0?'disabled':''}>← Poprzedni</button><button class="v3-primary-action" id="cook-done">${step&&st.steps[step.id]?'✓ Cofnij ukończenie':'✓ Ukończ krok'}</button><button id="cook-next" ${active>=steps.length-1?'disabled':''}>Następny →</button></div><section class="v3-step-list"><div class="v3-section-head"><div><span class="v3-kicker">PLAN</span><h2>Lista kroków</h2></div></div>${steps.map((s,i)=>`<button class="v3-step-list-row ${st.steps[s.id]?'done':''} ${i===active?'active':''}" data-cook-step-v20="${s.id}" data-step-index="${i}"><span>${st.steps[s.id]?'✓':i+1}</span><div>${escapeHtml(s.text)}</div></button>`).join('')}</section><button class="v3-reset" id="cook-reset-v20">Resetuj postęp</button></div>`;
+}
+function viewShoppingV20(){
+  const groups={};for(const x of state.shopping){const k=shopKey(x.name,x.unit);groups[k]??={...x,qty:0};groups[k].qty+=(+x.qty||0)}const list=Object.values(groups),done=list.filter(x=>x.done).length;
+  return `<div class="v3-shopping"><div class="v3-page-head"><div><span class="v3-kicker">PLANOWANIE</span><h1>Zakupy</h1><p>${list.length?`${list.length} pozycji · ${done} już kupione`:'Twoja lista jest pusta.'}</p></div><button class="v3-add-btn" id="add-shopping">＋<span>Dodaj</span></button></div><div class="v3-shop-tabs"><span class="active">Wszystkie ${list.length}</span><span>Do kupienia ${list.length-done}</span><span>Kupione ${done}</span></div><div class="v3-shopping-list">${list.length?list.map(x=>`<label class="v3-shop-row ${x.done?'done':''}"><input type="checkbox" data-shop-check-v20="${escapeHtml(x.id)}" ${x.done?'checked':''}><span class="v3-shop-dot">${x.done?'✓':'•'}</span><span class="v3-shop-name">${escapeHtml(x.name)}</span><strong>${fmt(x.qty)} ${escapeHtml(x.unit)}</strong></label>`).join(''):`<div class="v3-empty"><span>🛒</span><b>Lista jest pusta</b><p>Dodaj składniki z receptury albo wpisz produkt ręcznie.</p></div>`}</div><div class="v3-shop-bottom"><button id="clear-done">Usuń ukończone</button><button id="clear-all-shop">Wyczyść wszystko</button></div></div>`;
+}
+function viewCalculatorsV20(){
+ const p=state.pizzaV20||{mode:'dough',flour:1000,balls:10,ball:250,hyd:65,salt:3,oil:0,yeast:.2,temp:22,time:24,poolish:0,prefermentHyd:100};
+ const f0=+p.flour||0,h=+p.hyd||0,s=+p.salt||0,o=+p.oil||0,y=+p.yeast||0;let f=f0;if(p.mode==='dough'){const total=(+p.balls||0)*(+p.ball||0);f=total/(1+h/100+s/100+o/100+y/100)}const water=f*h/100,salt=f*s/100,oil=f*o/100,yeast=f*y/100,total=f+water+salt+oil+yeast,balls=p.mode==='dough'?(+p.balls||0):(+p.ball>0?Math.floor(total/+p.ball):0);
+ return `<div class="v3-tools"><div class="v3-page-head"><div><span class="v3-kicker">PRO KUCHNIA</span><h1>Kalkulatory</h1><p>Precyzyjne narzędzia do pizzy, ciasta i przeliczania receptur.</p></div></div><div class="v3-tool-hero"><div><span class="v3-kicker">PIZZA PRO</span><h2>Ciasto pod kontrolą.</h2><p>Ustaw hydrację, kulki, sól, drożdże i czas fermentacji. Wynik liczy się na żywo.</p></div><span class="v3-tool-icon">🍕</span></div><div class="v3-segment"><button id="p2-dough" class="${p.mode==='dough'?'active':''}">Kulki / masa</button><button id="p2-flour" class="${p.mode==='flour'?'active':''}">Mam mąkę</button></div><section class="v3-calc-card"><div class="v3-calc-grid">${p.mode==='flour'?`<label>Mąka<input id="p2-flour-val" type="number" inputmode="decimal" value="${p.flour}"><small>g</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`:`<label>Liczba kulek<input id="p2-balls" type="number" inputmode="decimal" value="${p.balls}"><small>szt.</small></label><label>Masa kulki<input id="p2-ball" type="number" inputmode="decimal" value="${p.ball}"><small>g</small></label>`}<label>Hydracja<input id="p2-hyd" type="number" step="0.1" value="${p.hyd}"><small>%</small></label><label>Sól<input id="p2-salt" type="number" step="0.1" value="${p.salt}"><small>%</small></label><label>Oliwa<input id="p2-oil" type="number" step="0.1" value="${p.oil}"><small>%</small></label><label>Drożdże<input id="p2-yeast" type="number" step="0.01" value="${p.yeast}"><small>%</small></label><label>Temperatura<input id="p2-temp" type="number" value="${p.temp}"><small>°C</small></label><label>Fermentacja<input id="p2-time" type="number" value="${p.time}"><small>h</small></label></div></section><section id="p2-live-result" class="v3-result"><div><span>Mąka</span><b>${fmt(f)} g</b></div><div><span>Woda</span><b>${fmt(water)} g</b></div><div><span>Sól</span><b>${fmt(salt)} g</b></div><div><span>Oliwa</span><b>${fmt(oil)} g</b></div><div><span>Drożdże</span><b>${fmt(yeast)} g</b></div><div><span>Ciasto</span><b>${fmt(total)} g</b></div><div><span>Kulki</span><b>${fmt(balls)} × ${fmt(p.ball)} g</b></div></section><section class="v3-calc-card"><div class="v3-section-head"><div><span class="v3-kicker">FERMENTACJA</span><h2>Preferment</h2></div></div><div class="v3-calc-grid"><label>Preferment<input id="p2-pref" type="number" value="${p.poolish}"><small>% mąki</small></label><label>Nawodnienie<input id="p2-prefhyd" type="number" value="${p.prefermentHyd}"><small>%</small></label></div><div class="v3-ferment-result">${p.poolish>0?`Preferment: <b>${fmt(f*p.poolish/100)} g mąki</b> · ${fmt(f*p.poolish/100*p.prefermentHyd/100)} g wody`:'Brak prefermentu'}<span>${fmt(p.time)} h · ${fmt(p.temp)}°C</span></div></section><div class="v3-tool-actions"><button class="v3-primary-action" id="p2-save">Zapisz profil</button><button id="p2-reset">Reset</button></div></div>`;
+}
+function viewSettings(){return `<div class="v3-settings"><div class="v3-page-head"><div><span class="v3-kicker">PERSONALIZACJA</span><h1>Ustawienia</h1><p>Dopasuj Kucharzynę do swojej kuchni i sposobu pracy.</p></div></div><section class="v3-settings-card v3-settings-profile"><div class="v3-profile-avatar">👨‍🍳</div><div><b>Kucharzyna</b><p>Twoja kuchnia. Twoje receptury.</p></div></section><section class="v3-settings-card"><div class="v3-setting-head"><span>◐</span><div><b>Wygląd</b><small>Motyw aplikacji</small></div></div><select id="theme"><option value="system">Automatyczny</option><option value="light">Jasny</option><option value="dark">Ciemny</option></select></section><section class="v3-settings-card"><div class="v3-setting-head"><span>♟</span><div><b>Tryb aplikacji</b><small>Interfejs profesjonalny lub uproszczony</small></div></div><select id="profile"><option value="pro">Profesjonalny</option><option value="amateur">Amator</option></select></section><section class="v3-settings-card"><div class="v3-setting-head"><span>▣</span><div><b>Dane i backup</b><small>Wszystko zostaje na tym urządzeniu.</small></div></div><div class="v3-setting-buttons"><button id="export">Eksportuj backup</button><button id="importBackup">Importuj backup</button><button id="openImporter">Importuj recepturę</button><button id="addCategory">＋ Dodaj kategorię</button></div></section><section class="v3-settings-note"><b>🔒 Prywatność</b><p>Kucharzyna nie potrzebuje konta, reklam ani trackera. Receptury, notatki, zakupy i lokalne zdjęcia są przechowywane na Twoim urządzeniu.</p></section></div>`;
+}
+
