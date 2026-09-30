@@ -10,21 +10,23 @@ const seed=[
 {name:"Sos pomidorowy",category:"Sosy bazowe",description:"Prosty sos z pomidorów San Marzano.",yield:2500,yieldUnit:"g",prep:10,cook:30,ferment:0,temp:0,tags:["sos","pomidor"],traditional:true,flag:"🇮🇹",servings:10,ingredients:[["Pomidory San Marzano",2500,"g",""],["Sól",25,"g",""],["Oliwa",40,"ml",""],["Bazylia",20,"g",""]],steps:["Rozgrzej oliwę.","Dodaj pomidory i sól.","Gotuj spokojnie do pożądanej konsystencji.","Dodaj bazylię pod koniec.","Ostudź lub użyj od razu."],notes:"Dane przykładowe; dopasuj sól i redukcję do produktu.",source:"Tradycyjna receptura / przykład",sourceUrl:""}
 ];
 
+// Lokalne, wygenerowane grafiki. Zero zależności od zewnętrznych serwisów zdjęciowych.
 const RECIPE_IMAGES={
-  "Falafel":"https://commons.wikimedia.org/wiki/Special:FilePath/Falafel%20in%20a%20pita2.jpg",
-  "Ratatouille":"https://commons.wikimedia.org/wiki/Special:FilePath/Ratatouille%20%283611347077%29.jpg",
-  "Pad Thai":"https://commons.wikimedia.org/wiki/Special:FilePath/Pad%20Thai%202018-04-19.jpg",
-  "Baklava":"https://commons.wikimedia.org/wiki/Special:FilePath/Baklava%20%287357840892%29.jpg",
-  "Ceviche":"https://commons.wikimedia.org/wiki/Special:FilePath/Ceviche.jpg",
-  "Spaghetti alla carbonara":"https://commons.wikimedia.org/wiki/Special:FilePath/Pasta%20alla%20carbonara%20Rome.jpg",
-  "Carbonara":"https://commons.wikimedia.org/wiki/Special:FilePath/Pasta%20alla%20carbonara%20Rome.jpg",
-  "Sushi":"https://commons.wikimedia.org/wiki/Special:FilePath/Another%20sushi.jpg",
-  "Pizza Napoletana":"https://commons.wikimedia.org/wiki/Special:FilePath/A%20pizza%20in%20a%20plate.jpg"
+  "Carbonara":"./photo-carbonara.jpg",
+  "Spaghetti alla carbonara":"./photo-carbonara.jpg",
+  "Pizza Napoletana":"./photo-pizza.jpg",
+  "Sos pomidorowy":"./photo-tomato.jpg"
 };
-function recipeImage(r){return r?.image||r?.imageUrl||RECIPE_IMAGES[r?.name]||""}
+const DEFAULT_RECIPE_IMAGE="./photo-generic.jpg";
+function recipeImage(r){
+  const local=RECIPE_IMAGES[r?.name];
+  if(local) return local;
+  if(typeof r?.image==='string' && /^(data:|blob:)/.test(r.image)) return r.image;
+  return DEFAULT_RECIPE_IMAGE;
+}
 function ingredientGroupsSafe(r){return (r?.sections||[]).flatMap(s=>s.ingredients||[])}
 function recipeDescription(r){const d=String(r?.description||'').trim();if(d.length>=105&&!/^Klasyczne danie kuchni/i.test(d))return d;const names=ingredientGroupsSafe(r).slice(0,5).map(i=>i.name).filter(Boolean);const ing=names.length?names.join(', '):'starannie dobrane składniki';const cat=String(r?.category||'').toLowerCase();const process=cat.includes('pasta')||cat.includes('makaron')?'Kluczowe jest zachowanie właściwej konsystencji i wykończenie dania poza zbyt wysoką temperaturą.':cat.includes('pizza')||cat.includes('pieczywo')?'Najwięcej zależy tu od jakości mąki, prowadzenia fermentacji oraz kontroli temperatury podczas wypieku.':cat.includes('sos')?'Liczy się spokojna redukcja, koncentracja smaku i końcowa korekta soli, kwasowości oraz tłuszczu.':cat.includes('deser')?'Warto pilnować temperatury i momentu zakończenia obróbki, ponieważ konsystencja zmienia się także podczas studzenia.':'Receptura jest praktyczną bazą do pracy w kuchni; czasy i intensywność obróbki warto dopasować do konkretnego produktu.';return `${r?.name||'Danie'} to ${r?.traditional?'tradycyjna receptura oparta na charakterystycznych składnikach i technice przygotowania.':'praktyczna receptura do przygotowania w domu lub profesjonalnej kuchni.'} W tej wersji wykorzystujemy ${ing}. ${process}`.replace(/  +/g,' ').trim()}
-function photoMarkup(r,cls='global-photo'){const src=recipeImage(r);const fallback=`<div class="global-photo-fallback" hidden aria-label="Brak dostępnego zdjęcia"><div>🍽️<span>Zdjęcie potrawy niedostępne offline</span></div></div>`;return src?`<img class="${cls}" src="${escapeHtml(src)}" alt="${escapeHtml(r?.name||'Potrawa')}" loading="eager" onerror="this.style.display='none';this.nextElementSibling.hidden=false">${fallback}`:fallback.replace(' hidden','')}
+function photoMarkup(r,cls='global-photo'){const src=recipeImage(r);return `<img class="${cls}" src="${escapeHtml(src)}" alt="${escapeHtml(r?.name||'Potrawa')}" loading="eager" onerror="this.onerror=null;this.src='./photo-generic.jpg'">` }
 function normalizeIngredientName(name=""){
  const m={
   "five spice":"chińska mieszanka pięciu przypraw","gochujang":"pasta gochujang","ancho chili":"suszona papryka ancho","achiote":"pasta achiote","mirin":"mirin (japońskie wino ryżowe)","dashi":"bulion dashi","ghee":"masło klarowane","paneer":"ser paneer","doubanjiang":"pasta doubanjiang (fermentowana fasola chili)",
@@ -60,23 +62,13 @@ function detailedSteps(name="", category="", ingredients=[]){
  return [prep,`Rozgrzej odpowiednie naczynie lub piec i rozpocznij obróbkę składników wymagających najdłuższego czasu.`,`Dodawaj kolejne składniki zgodnie z ich strukturą i czasem obróbki. ${I.slice(0,3).join(", ")}.`,`Doprowadź danie do właściwej konsystencji, temperatury i stopnia ugotowania.`,`Dopraw i skoryguj równowagę smaku przed podaniem.`,`Podawaj zgodnie z charakterem dania i wykorzystaj pozostałe dodatki jako wykończenie.`];
 }
 async function ensureRecipeImages(){
+  // Obrazy są lokalne i są częścią paczki PWA. Nie wykonujemy już fetch() do Openverse/Wikimedia.
   let changed=false;
   for(const r of state.recipes){
-    if(recipeImage(r)) continue;
-    try{
-      const q=encodeURIComponent(r.name);
-      const res=await fetch(`https://api.openverse.org/v1/images/?q=${q}&page_size=1`);
-      if(!res.ok) continue;
-      const data=await res.json(); const hit=data?.results?.[0];
-      if(hit?.thumbnail||hit?.url){
-        r.image=hit.thumbnail||hit.url;
-        r.imageUrl=hit.url||hit.thumbnail||'';
-        r.imageCredit=hit.creator?`Zdjęcie: ${hit.creator}`:'Źródło: Openverse';
-        r.imageSource=hit.foreign_landing_url||hit.url||'';
-        r.imageLicense=hit.license?String(hit.license).toUpperCase():'';
-        r.updatedAt=now(); await put('recipes',r); changed=true;
-      }
-    }catch(e){ /* offline: keep local/placeholder */ }
+    const local=RECIPE_IMAGES[r.name];
+    if(local && (!r.image || /^https?:/i.test(String(r.image)))){ r.image=local; r.imageUrl=''; r.imageCredit='Grafika wygenerowana dla Kucharzyny'; r.imageSource='local'; changed=true; }
+    else if(!r.image){ r.image=DEFAULT_RECIPE_IMAGE; r.imageUrl=''; r.imageCredit='Grafika wygenerowana dla Kucharzyny'; r.imageSource='local'; changed=true; }
+    if(changed) await put('recipes',r);
   }
   if(changed) state.recipes=await getAll('recipes');
 }
@@ -107,7 +99,7 @@ async function init(){
  state.cook=Object.fromEntries((await getAll("cookState")).map(x=>[x.id,x]));
  if(!state.categories.length){for(const name of baseCats)await put("categories",{id:uid(),name});state.categories=await getAll("categories")}
  if(!state.recipes.length){for(const x of seed){const r=makeRecipe(x);await put("recipes",r)}state.recipes=await getAll("recipes")}
- applyTheme(); setupSW(); render();
+ applyTheme(); setupSW();
 }
 function makeRecipe(x){const r={id:uid(),createdAt:now(),updatedAt:now(),favorite:false,lastUsedAt:null,sections:[{id:uid(),name:"Główna",ingredients:x.ingredients.map(a=>({id:uid(),name:a[0],qty:a[1],unit:a[2],percent:a[3]??"",price:"",packQty:"",packUnit:a[2]}))}],steps:x.steps.map((text,i)=>({id:uid(),text})),...x};delete r.ingredients;return r}
 function applyTheme(){document.body.classList.toggle("amateur",state.settings.profile==="amateur");document.body.dataset.profile=state.settings.profile;let t=state.settings.theme;if(t==="system")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.classList.toggle("dark",t==="dark")}
@@ -117,7 +109,7 @@ function nav(route){state.route=route;render();$(".main-scroll").scrollTop=0}
 function saveSetting(){put("settings",{id:"settings",...state.settings})}
 function fmt(n){return Number.isInteger(Number(n))?String(n):Number(n).toFixed(2).replace(/\.?0+$/,"")}
 function escapeHtml(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
-function recipeCard(r){const src=recipeImage(r);return `<article class="card recipe-card" data-open="${r.id}"><div class="recipe-thumb">${src?`<img src="${escapeHtml(src)}" loading="lazy" onerror="this.style.display='none';this.parentElement.classList.add('image-missing');this.parentElement.insertAdjacentText('beforeend','🍽️')">`:'🍽️'}</div><div class="grow"><div class="row between"><h3>${escapeHtml(r.name)} ${r.traditional?`<span class="star">★</span>`:""} ${r.flag||""}</h3><button class="icon-btn small fav" data-fav="${r.id}" aria-label="Ulubione">${r.favorite?"★":"☆"}</button></div><div class="recipe-meta">${escapeHtml(r.category||"Inne")} · ${r.yield?fmt(r.yield)+" "+escapeHtml(r.yieldUnit||""):""} ${r.lastUsedAt?"· ostatnio używana":""}</div></div></article>`}
+function recipeCard(r){const src=recipeImage(r);return `<article class="card recipe-card" data-open="${r.id}"><div class="recipe-thumb">${src?`<img src="${escapeHtml(src)}" loading="lazy" alt="${escapeHtml(r.name)}" onerror="this.remove();this.parentElement.classList.add('image-missing');if(!this.parentElement.querySelector('.img-fallback'))this.parentElement.insertAdjacentHTML('beforeend','<span class=\"img-fallback\" aria-hidden=\"true\">🍽️</span>')">`:'<span class="img-fallback" aria-hidden="true">🍽️</span>'}</div><div class="grow"><div class="row between"><h3>${escapeHtml(r.name)} ${r.traditional?`<span class="star">★</span>`:""} ${r.flag||""}</h3><button class="icon-btn small fav" data-fav="${r.id}" aria-label="Ulubione">${r.favorite?"★":"☆"}</button></div><div class="recipe-meta">${escapeHtml(r.category||"Inne")} · ${r.yield?fmt(r.yield)+" "+escapeHtml(r.yieldUnit||""):""} ${r.lastUsedAt?"· ostatnio używana":""}</div></div></article>`}
 function render(){
  $$(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.route===state.route));
  const views={start:viewStart,recipes:viewRecipes,calculators:viewCalculators,shopping:viewShopping,settings:viewSettings};
@@ -256,7 +248,7 @@ function bind(){
  if($("#clear-done"))$("#clear-done").onclick=async()=>{for(const x of state.shopping.filter(a=>a.done))await del("shoppingItems",x.id);state.shopping=await getAll("shoppingItems");render();toast("Usunięto ukończone")};
  if($("#clear-all-shop"))$("#clear-all-shop").onclick=()=>confirmGeneric("Wyczyścić całą listę zakupów?",async()=>{await clearStore("shoppingItems");state.shopping=[];render();toast("Lista wyczyszczona")});
  if($("#theme")){$("#theme").value=state.settings.theme;$("#theme").onchange=()=>{state.settings.theme=$("#theme").value;saveSetting();applyTheme()}};
- if($("#profile")){$("#profile").value=state.settings.profile;$("#profile").onchange=()=>{state.settings.profile=$("#profile").value;saveSetting();applyTheme();renderV14();toast(state.settings.profile==="amateur"?"Tryb Amator włączony":"Tryb Profesjonalny włączony")}};
+ if($("#profile")){$("#profile").value=state.settings.profile;$("#profile").onchange=()=>{state.settings.profile=$("#profile").value;saveSetting();applyTheme();renderV20();toast(state.settings.profile==="amateur"?"Tryb Amator włączony":"Tryb Profesjonalny włączony")}};
  $("#export")?.addEventListener("click",exportBackup);$("#importBackup")?.addEventListener("click",()=>backupInput());
  $("#addCategory")?.addEventListener("click",()=>{openModal(`<h2>Nowa kategoria</h2><input id="cat-name" placeholder="Np. Fermenty"><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Anuluj</button><button class="btn primary" id="cat-ok">Dodaj</button></div>`);$("#cat-ok").onclick=async()=>{const name=$("#cat-name").value.trim();if(!name)return;if(state.categories.some(c=>c.name.toLowerCase()===name.toLowerCase())){toast("Taka kategoria już istnieje");return}await put("categories",{id:uid(),name});state.categories=await getAll("categories");closeModal();render();toast("Dodano kategorię")}});$("#openImporter")?.addEventListener("click",openImporter);
  bindCook();
@@ -517,9 +509,9 @@ function bindV14(){
  if(state.route==="edit"){$$("#main [data-v14-save]").forEach(b=>b.onclick=saveEditorV14);$$("#main .remove-sec").forEach(b=>b.onclick=()=>{b.closest(".editor-section").remove()});$$("#main .remove-ing").forEach(b=>b.onclick=()=>{b.closest(".editor-ingredient").remove()});$$("#main .remove-step").forEach(b=>b.onclick=()=>{b.closest(".editor-step").remove();renumberEditorSteps()});$("#v14-add-section")?.addEventListener("click",()=>{$("#v14-sections").insertAdjacentHTML("beforeend",`<div class="editor-section" data-section="${uid()}"><div class="editor-section-head"><div><span class="kicker">SEKCJA</span><input class="sec-name" value="Nowa sekcja"></div><button class="icon-btn danger remove-sec">×</button></div><div class="editor-ingredients"></div><button class="add-row-btn add-ing">＋ Dodaj składnik</button></div>`);bindV14()});$("#v14-add-step")?.addEventListener("click",()=>{$("#v14-steps").insertAdjacentHTML("beforeend",`<div class="editor-step step" data-step="${uid()}"><div class="step-number"></div><textarea class="step-text" rows="3" placeholder="Opisz dokładnie ten etap…"></textarea><button class="icon-btn danger remove-step">×</button></div>`);renumberEditorSteps();bindV14()});$$("#main .add-ing").forEach(b=>b.onclick=()=>{b.closest(".editor-section").querySelector(".editor-ingredients").insertAdjacentHTML("beforeend",`<div class="editor-ingredient ing" data-ing="${uid()}"><div class="drag-handle">☷</div><div class="editor-ingredient-name"><label>Składnik</label><input class="i-name" placeholder="np. Mąka 00"></div><div class="editor-ingredient-qty"><label>Gramatura</label><input class="i-qty" type="number" step="any" inputmode="decimal"></div><div class="editor-ingredient-unit"><label>Jednostka</label><select class="i-unit"><option selected>g</option><option>kg</option><option>ml</option><option>l</option><option>szt.</option><option>łyżka</option><option>łyżeczka</option><option>szczypta</option><option>porcja</option></select></div><button class="icon-btn danger remove-ing">×</button></div>`);bindV14()});renumberEditorSteps();} 
 }
 const originalRenderV14=render;
-render=function(){renderV14()};
+render=function(){renderV20()};
 
-init().then(async()=>{await seedV14();state.recipes=await getAll("recipes");state.pizzaProfiles=await getAll("pizzaProfiles");normalizeRecipes();enrichRecipeDescriptions();for(const r of state.recipes)await put("recipes",r);initV14Enhance();await ensureRecipeImages();renderV14()});
+init().then(async()=>{await seedV14();state.recipes=await getAll("recipes");state.pizzaProfiles=await getAll("pizzaProfiles");normalizeRecipes();enrichRecipeDescriptions();for(const r of state.recipes)await put("recipes",r);initV14Enhance();renderV20();});
 
 
 /* v1.9 repair layer: Amateur is a separate UI + system dark mode + complete recipe hydration */
@@ -619,23 +611,7 @@ function completeRecipeSteps(r){
 }
 
 async function hydrateRecipeImages(){
-  const targets=state.recipes.filter(r=>!r.image && !r.imageUrl);
-  for(const r of targets){
-    try{
-      const q=encodeURIComponent(`${r.name} ${r.cuisine||''} food`);
-      const res=await fetch(`https://api.openverse.org/v1/images/?q=${q}&page_size=1`);
-      if(!res.ok) continue;
-      const data=await res.json(); const hit=data.results?.[0];
-      if(hit?.thumbnail || hit?.url){
-        r.imageUrl=hit.thumbnail||hit.url;
-        r.imageCredit=hit.creator?`Zdjęcie: ${hit.creator} · Openverse`:'Zdjęcie: Openverse';
-        r.imageLicense=hit.license||'';
-        r.imageSourceUrl=hit.foreign_landing_url||hit.url||'';
-        await put('recipes',r);
-      }
-    }catch(e){ /* offline/network failure: keep recipe usable */ }
-  }
-  state.recipes=await getAll('recipes'); renderV14();
+  await ensureRecipeImages();
 }
 
 
@@ -643,6 +619,9 @@ function enrichRecipeDescriptions(){const special={'Pizza Napoletana':'Klasyczne
 async function repairAllRecipes(){
   for(const r of state.recipes){
     r.steps=completeRecipeSteps(r);
+    if(RECIPE_IMAGES[r.name]){r.image=RECIPE_IMAGES[r.name];r.imageUrl='';r.imageSource='local';r.imageCredit='Grafika wygenerowana dla Kucharzyny';}
+    else if(typeof r.image==='string' && /^https?:/i.test(r.image)){r.image=DEFAULT_RECIPE_IMAGE;r.imageUrl='';r.imageSource='local';r.imageCredit='Grafika wygenerowana dla Kucharzyny';}
+    else if(!r.image){r.image=DEFAULT_RECIPE_IMAGE;r.imageSource='local';r.imageCredit='Grafika wygenerowana dla Kucharzyny';}
     if(r.traditional && (!r.sourceUrl||!r.license)){r.source='Wikibooks Cookbook';r.sourceUrl='https://en.wikibooks.org/wiki/Cookbook:Recipes';r.license='CC BY-SA 4.0 — opracowanie Kucharzyny';}
     await put('recipes',r);
   }
@@ -650,7 +629,7 @@ async function repairAllRecipes(){
 }
 
 // Run repairs after the original boot has finished.
-setTimeout(async()=>{try{await repairAllRecipes();await hydrateRecipeImages();}catch(e){}},700);
+setTimeout(async()=>{try{await repairAllRecipes();await ensureRecipeImages();enrichRecipeDescriptions();renderV20();}catch(e){}},700);
 
 /* ===== Kucharzyna 2.0 modules ===== */
 function ingredientGroups(r){return (r.sections||[]).flatMap(s=>s.ingredients||[]).filter(i=>i.name)}
@@ -668,7 +647,7 @@ function viewCalculatorsV20(){
 }
 
 function bindV20(){
-  const gb=$('#globalBack');if(gb)gb.onclick=()=>backRoute();
+  const gb=$('#globalBack');if(gb){gb.onclick=()=>backRoute();gb.setAttribute('aria-label',state.route==='start'?'Start':'Powrót');gb.title=state.route==='start'?'Start':'Powrót';}
   const gs=$('#globalSettings');if(gs)gs.onclick=()=>nav('settings');
   $$('.nav-btn').forEach(b=>b.onclick=()=>nav(b.dataset.route));
   $$('#main [data-route2]').forEach(b=>b.onclick=()=>nav(b.dataset.route2));
@@ -689,6 +668,14 @@ function bindV20(){
   $$('#main [data-back]').forEach(b=>b.onclick=()=>nav(b.dataset.back||'start'));
   $$('#main [data-cat]').forEach(b=>b.onclick=()=>{state.selectedCat=b.dataset.cat;renderV20()});
   $$('#main [data-trad-v14]').forEach(b=>b.onclick=()=>{state.tradCatV14=b.dataset.tradV14;renderV20()});
+  if(state.route==='settings'){
+    const theme=$('#theme'); if(theme){theme.value=state.settings.theme;theme.onchange=()=>{state.settings.theme=theme.value;saveSetting();applyTheme();toast('Motyw zapisany')}}
+    const profile=$('#profile'); if(profile){profile.value=state.settings.profile;profile.onchange=()=>{state.settings.profile=profile.value;saveSetting();applyTheme();renderV20();toast(profile.value==='amateur'?'Tryb Amator włączony':'Tryb Profesjonalny włączony')}}
+    $('#export')?.addEventListener('click',exportBackup);
+    $('#importBackup')?.addEventListener('click',()=>backupInput());
+    $('#openImporter')?.addEventListener('click',openImporter);
+    $('#addCategory')?.addEventListener('click',()=>{openModal(`<h2>Nowa kategoria</h2><input id="cat-name" placeholder="Np. Fermenty"><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Anuluj</button><button class="btn primary" id="cat-ok">Dodaj</button></div>`);$('#cat-ok').onclick=async()=>{const name=$('#cat-name').value.trim();if(!name)return;if(state.categories.some(c=>c.name.toLowerCase()===name.toLowerCase())){toast('Taka kategoria już istnieje');return}await put('categories',{id:uid(),name});state.categories=await getAll('categories');closeModal();renderV20();toast('Dodano kategorię')}})
+  }
   if(state.route==='edit') bindV14();
   if(state.route==='cook'){
     const r=state.recipes.find(x=>x.id===state.selectedId),st=r&&cookStateFor(r);
@@ -725,8 +712,8 @@ function updatePizzaProResult(){
 }
 
 function renderV20(){applyTheme();$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.route===state.route));if(state.route==='recipe')$('#main').innerHTML=recipeViewV20(state.selectedId);else if(state.route==='cook')$('#main').innerHTML=viewCookV20();else if(state.route==='shopping')$('#main').innerHTML=viewShoppingV20();else if(state.route==='calculators')$('#main').innerHTML=viewCalculatorsV20();else if(state.route==='edit')$('#main').innerHTML=editorV14(state.editId);else {const views={start:viewStart,recipes:viewRecipes,traditional:viewTraditionalV14,settings:viewSettings};$('#main').innerHTML=(views[state.route]||viewStart)()}bindV20()}
-function backRoute(){const r=state.route;if(r==='cook'){state.route='recipe';renderV20();return}if(r==='edit'){state.route=state.editId?'recipe':'start';if(state.editId)state.selectedId=state.editId;renderV20();return}if(r==='recipe'){state.route=state.returnRoute||'recipes';renderV20();return}if(r==='traditional'){state.route='start';renderV20();return}state.route='start';renderV20()}
+function backRoute(){const r=state.route;let target='start';if(r==='cook')target='recipe';else if(r==='edit'){target=state.editId?'recipe':'start';if(state.editId)state.selectedId=state.editId;}else if(r==='recipe')target=state.returnRoute||'recipes';else if(r==='recipes'||r==='traditional'||r==='calculators'||r==='shopping'||r==='settings')target='start';state.route=target;applyTheme();renderV20();requestAnimationFrame(()=>document.querySelector('.main-scroll')?.scrollTo({top:0,left:0,behavior:'auto'}))}
 function recipeViewV20(id){const r=state.recipes.find(x=>x.id===id);if(!r)return viewRecipes();const ingredients=ingredientGroups(r),desc=recipeDescription(r);return `<div class="recipe20">${photoMarkup(r,'global-photo')}<div class="recipe20-title"><div class="kicker">${escapeHtml(r.category||'Inne')} ${r.flag||''} ${r.traditional?'<span class="star">★ TRADYCYJNA</span>':''}</div><h1>${escapeHtml(r.name)}</h1><p>${escapeHtml(desc)}</p></div><div class="recipe20-intro"><b>Na co zwrócić uwagę</b><div>${escapeHtml(r.notes||'Zanim zaczniesz, przygotuj wszystkie składniki, sprawdź temperaturę i zaplanuj kolejność pracy. Własne uwagi możesz później zapisać przy tej recepturze.')}</div></div><div class="recipe20-actions"><button class="btn primary" data-cook="${r.id}">▶ GOTUJĘ</button><button class="btn" data-edit="${r.id}">✎ EDYTUJ</button><button class="btn" data-shop-recipe="${r.id}">＋ ZAKUPY</button></div><section><div class="section-title-row"><h2>Składniki</h2><span class="kicker">${ingredients.length}</span></div>${(r.sections||[]).map(s=>`<div class="ingredient-section"><h3>${escapeHtml(s.name)}</h3>${(s.ingredients||[]).map(i=>`<button class="ingredient20" data-recipe-ing="${i.id}"><span>${escapeHtml(i.name)}</span><strong>${fmt(i.qty)} ${escapeHtml(i.unit)}</strong></button>`).join('')}</div>`).join('')}</section><section><div class="section-title-row"><h2>Wykonanie</h2><span class="kicker">${(r.steps||[]).length} kroków</span></div><div class="steps20">${(r.steps||[]).map((s,i)=>`<article class="step20"><div>${i+1}</div><p>${escapeHtml(s.text)}</p></article>`).join('')}</div></section><section class="recipe20-meta"><div><span>Przygotowanie</span><b>${fmt(r.prep||0)} min</b></div><div><span>Gotowanie</span><b>${fmt(r.cook||0)} min</b></div><div><span>Fermentacja</span><b>${fmt(r.ferment||0)} h</b></div>${r.temp?`<div><span>Temperatura</span><b>${r.temp}°C</b></div>`:''}</section>${r.imageCredit?`<p class="photo-credit">${escapeHtml(r.imageCredit)}</p>`:''}</div>`}
 
-function initKucharzyna20(){const oldNav=nav;nav=function(route){state.route=route;renderV20();document.querySelector('.main-scroll')?.scrollTo(0,0)};window.renderV20=renderV20;renderV20()}
-setTimeout(initKucharzyna20,0);
+function initKucharzyna20(){nav=function(route){if(route===state.route && route==='start'){document.querySelector('.main-scroll')?.scrollTo(0,0);return}state.route=route;applyTheme();renderV20();requestAnimationFrame(()=>document.querySelector('.main-scroll')?.scrollTo({top:0,left:0,behavior:'auto'}))};window.renderV20=renderV20}
+initKucharzyna20();

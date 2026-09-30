@@ -258,3 +258,21 @@ html.dark body.amateur .am-menu button,html.dark body.amateur .am-search,html.da
 .cook20-complete{padding:28px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(135deg,var(--surface),var(--soft));text-align:center;margin:24px 0}.cook20-complete .big-check{font-size:54px}.cook20-complete h2{font-size:30px;margin:8px 0}.cook20-complete p{color:var(--muted);line-height:1.6}
 .cook20-done{color:var(--accent);font-weight:800}
 @media(max-width:430px){.topbar{padding-left:68px;padding-right:12px}.topbar-actions .icon-btn{width:42px;height:42px}.global-back{left:12px;width:44px;height:44px}}
+
+.img-fallback{display:grid;place-items:center;width:100%;height:100%;font-size:42px;color:var(--muted)}
+.recipe-thumb.image-missing{display:grid;place-items:center;background:var(--soft)}
+
+/* v2.3.2 navigation stability: one consistent top-level back control */
+.global-back{position:fixed!important;left:max(12px,env(safe-area-inset-left) + 10px)!important;top:calc(env(safe-area-inset-top) + 14px)!important;transform:none!important;width:46px;height:46px;background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--line)!important;box-shadow:0 5px 18px rgba(0,0,0,.10)!important;isolation:isolate;transition:none!important;z-index:100!important}
+.global-back:active{transform:scale(.96)!important}
+.topbar{background:var(--bg)!important;color:var(--text)!important;isolation:isolate;z-index:90!important}
+.topbar-brand,.topbar-actions{position:relative;z-index:91}
+.screen-back{display:none!important}
+.cook20-top [data-back]{display:none!important}
+.cook20-top{justify-content:flex-end!important}
+.recipe20,.cook20,.pro-calc{color:var(--text)}
+.global-photo,.recipe20-hero,.recipe-cover img{background:var(--surface2)}
+.global-photo{min-height:220px}
+@media(max-width:430px){.topbar{padding-left:68px!important}.global-back{width:44px;height:44px}}
+
+body.amateur .topbar{background:var(--surface)!important;color:var(--text)!important;border-bottom:1px solid var(--line)!important;box-shadow:none!important}body.amateur .global-back{background:var(--surface)!important;color:var(--text)!important}
