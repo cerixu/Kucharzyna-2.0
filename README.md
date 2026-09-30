@@ -1,53 +1,39 @@
-# Kucharzyna
+# Kucharzyna v2.3 — GitHub Pages ROOT
 
-Prywatna, offline-first PWA dla kucharza. Projekt nie wymaga backendu ani płatnych API.
+PWA Kucharzyna przygotowana do publikacji jako statyczna strona na GitHub Pages.
 
-## Uruchomienie
-Możesz otworzyć projekt przez prosty serwer statyczny albo GitHub Pages. Service Worker działa w bezpiecznym kontekście HTTPS (GitHub Pages spełnia ten warunek).
+## v2.3 — UX / nawigacja / gotowanie / zdjęcia
+- Stały przycisk `←` w lewym górnym rogu na każdym ekranie.
+- Inteligentny powrót: gotowanie → receptura → poprzedni ekran.
+- Stały przycisk `⚙ Ustawienia` w górnym pasku, również w trybie Amator.
+- Ustawienia dostępne także jako szybka akcja na ekranie Start.
+- „Ukończ krok” daje natychmiastowy feedback i zapisuje postęp.
+- Ostatni ukończony krok kończy tryb GOTUJĘ i pokazuje ekran „Gotowanie zakończone”.
+- Można cofnąć ukończenie pojedynczego kroku.
+- Można zresetować gotowanie i rozpocząć je ponownie.
+- Receptury mają bardziej rozbudowane opisy oraz sekcję „Na co zwrócić uwagę”.
+- Zdjęcia mają odporny fallback zamiast pustego miejsca; obrazy zewnętrzne są dodatkowo cache'owane przez Service Workera, gdy przeglądarka je pobierze.
+- Brak folderów `assets/` / `photos/` — wszystkie pliki pozostają w katalogu głównym.
+- Brak Google Search / przekierowania do Google.
+- Service Worker podbity do wersji v2.3.
 
-## GitHub Pages
-1. Utwórz publiczne repozytorium, np. `kucharzyna`.
-2. Wgraj zawartość tego katalogu do głównej gałęzi.
-3. GitHub → Settings → Pages → Deploy from a branch → wybierz `main` i `/ (root)`.
-4. Po publikacji otwórz adres Pages na iPhonie w Safari.
+## Pliki
+- `index.html`
+- `styles.css`
+- `app.js`
+- `db.js`
+- `service-worker.js`
+- `manifest.webmanifest`
+- `icon-180.png`
+- `icon-192.png`
+- `icon-512.png`
 
-## Instalacja na iPhone
-Safari → otwórz adres GitHub Pages → Udostępnij → Dodaj do ekranu początkowego → Dodaj.
-Po uruchomieniu ikony Kucharzyna działa jako standalone PWA.
+## Publikacja
+1. Rozpakuj ZIP.
+2. Wgraj **wszystkie pliki bezpośrednio do głównego katalogu repozytorium GitHub**.
+3. GitHub → Settings → Pages → Deploy from branch → wybierz branch i `/ (root)`.
+4. Otwórz stronę w Safari na iPhonie.
+5. Safari → Udostępnij → Dodaj do ekranu początkowego.
 
-## Dane
-Receptury, składniki, kategorie, zakupy, ustawienia, historia i stan „Gotuję” są przechowywane lokalnie w IndexedDB przeglądarki. Zdjęcia są kompresowane i również przechowywane lokalnie. Nic nie jest wysyłane do serwera.
-
-## Backup
-Ustawienia → Eksportuj JSON. Plik zawiera dane aplikacji i stan pracy. Import backupu umożliwia zastąpienie danych albo połączenie ich z istniejącymi.
-
-## Offline i aktualizacje
-Service Worker przechowuje zasoby aplikacji i usuwa stary cache po aktywacji nowej wersji. Przy wykryciu nowego service workera aplikacja pokazuje komunikat o aktualizacji.
-
-## Ważne
-GitHub Pages hostuje wyłącznie pliki aplikacji. Dane użytkownika pozostają na urządzeniu i nie trafiają do GitHuba.
-
-## Wersja 1.1
-Dopracowany iPhone UI, ekran receptury, tryb GOTUJĘ, większe akcje dotykowe i lepsza hierarchia informacji.
-
-
-## v1.2
-- poprawiona nawigacja z trybu GOTUJĘ do receptury;
-- możliwość zmiany kolejności sekcji receptury ↑/↓;
-- ilość pozycji na liście zakupów można edytować bezpośrednio;
-- zachowanie ID składników/kroków przy edycji, co stabilizuje postęp GOTUJĘ;
-- przygotowane pole ceny jednostkowej składnika w edytorze;
-- bezpieczniejsze scalanie backupów na podstawie `updatedAt`;
-- drobne poprawki iOS/touch UX.
-
-- **v1.2.1 hotfix:** `db.js` jest jawnie ładowany przed `app.js`, dzięki czemu IndexedDB i cała interakcja aplikacji uruchamiają się poprawnie na GitHub Pages.
-
-
-## v1.3
-- Kalkulator pizzy ma tryb **Mam mąkę** oraz **Kulki / masa**.
-- Można zapisywać własne profile kalkulatora pizzy w IndexedDB.
-- Dodano osobną zakładkę **Tradycyjne** z lokalną bazą klasycznych dań różnych kuchni świata i wyszukiwaniem w aplikacji.
-- Usunięto przejście do Google.
-- Tryb **Amator** ma odrębny, kolorowy interfejs konsumencki i ukrywa Food Cost.
-- Rozbudowano kolorystykę i karty potraw.
-- Zdjęcia receptur pozostają lokalne; można je dodawać w edytorze i są przechowywane w IndexedDB.
+## Ważne przy aktualizacji
+Po publikacji nowej wersji Service Worker ma nowy numer cache. Jeśli iPhone pokazuje starą wersję, zamknij PWA, otwórz stronę ponownie i zaakceptuj komunikat o nowej wersji.

@@ -16,11 +16,12 @@
 <body>
 <div id="app" class="app-shell">
   <header class="topbar safe-top">
-    <div>
+    <button id="globalBack" class="global-back" aria-label="Powrót">←</button>
+    <div class="topbar-brand">
       <div class="eyebrow">KUCHENNY PANEL</div>
       <div class="brand">Kucharzyna</div>
     </div>
-    <button id="themeBtn" class="icon-btn" aria-label="Zmień motyw">◐</button>
+    <div class="topbar-actions"><button id="globalSettings" class="icon-btn" aria-label="Ustawienia">⚙</button><button id="themeBtn" class="icon-btn" aria-label="Zmień motyw">◐</button></div>
   </header>
 
   <main id="main" class="main-scroll" tabindex="-1"></main>
